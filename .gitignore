@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+.idea/
+
+# 原始与中间数据不入库，只保留 data/chunks.jsonl
+data/raw/
+data/parsed/
+data/index/
+reports/
