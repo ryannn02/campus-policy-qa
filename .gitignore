@@ -9,4 +9,9 @@ __pycache__/
 data/raw/
 data/parsed/
 data/index/
+data/*.log
 reports/
+
+# 本地依赖缓存与临时目录
+.uv-cache/
+.tmp/

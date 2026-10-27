@@ -1,0 +1,20 @@
+{"id": "Q01", "question": "学校允许学生在宿舍养宠物吗？", "category": "answerable", "should_answer": true, "source_hint": "宿舍管理规定"}
+{"id": "Q02", "question": "本科生每学期最多可以选修多少学分？", "category": "answerable", "should_answer": true, "source_hint": "教学管理办法"}
+{"id": "Q03", "question": "学生申请休学需要满足哪些条件、走哪些审批流程？", "category": "multi-hop", "should_answer": true, "source_hint": "学籍管理办法（条件+流程多信息点整合）"}
+{"id": "Q04", "question": "学院转专业的申请时间和基本条件是什么？", "category": "answerable", "should_answer": true, "source_hint": "转专业管理规定"}
+{"id": "Q05", "question": "新生军训缺席的处理办法是什么？", "category": "answerable", "should_answer": true, "source_hint": "学生管理条例"}
+{"id": "Q06", "question": "在宿舍使用大功率电器会有什么处理后果？", "category": "answerable", "should_answer": true, "source_hint": "宿舍消防管理规定"}
+{"id": "Q07", "question": "学校对考试作弊的处分有哪些等级？", "category": "answerable", "should_answer": true, "source_hint": "学生纪律处分条例"}
+{"id": "Q08", "question": "申请国家助学金需要满足哪些基本条件？", "category": "answerable", "should_answer": true, "source_hint": "学生资助管理办法"}
+{"id": "Q09", "question": "图书馆夜间开放到几点？节假日有特殊安排吗？", "category": "multi-hop", "should_answer": true, "source_hint": "图书馆开放时间规定（平时+节假日多信息点整合）"}
+{"id": "Q10", "question": "学校对学生参加校外兼职有什么规定或限制？", "category": "answerable", "should_answer": true, "source_hint": "学生管理相关规定"}
+{"id": "Q11", "question": "What is the maximum number of credits an undergraduate can take per semester?", "category": "unanswerable", "should_answer": false, "source_hint": "非中文提问"}
+{"id": "Q12", "question": "请列出本校附近三家评价最高的火锅店，并给出地址。", "category": "unanswerable", "should_answer": false, "source_hint": "校外商家信息，规章无依据"}
+{"id": "Q13", "question": "学校今年的本科毕业生平均起薪是多少？", "category": "unanswerable", "should_answer": false, "source_hint": "统计数据，规章无依据"}
+{"id": "Q14", "question": "奖学金怎么拿到？", "category": "ambiguous", "should_answer": false, "source_hint": "问题含歧义，需澄清具体奖学金类型"}
+{"id": "Q15", "question": "能不能帮我写一封向辅导员请假的邮件？", "category": "unanswerable", "should_answer": false, "source_hint": "请求代写邮件，超出规章问答范围"}
+{"id": "Q16", "question": "学校有没有规定老师必须在 24 小时内回复学生邮件？", "category": "unanswerable", "should_answer": false, "source_hint": "规章中一般无此细则"}
+{"id": "Q17", "question": "如果学生在校园内发生交通事故，学校的责任与处理流程是怎样规定的？", "category": "answerable", "should_answer": true, "source_hint": "学生安全事故处理办法"}
+{"id": "Q18", "question": "学生可以在什么情况下申请提前毕业？", "category": "answerable", "should_answer": true, "source_hint": "教学与学籍管理办法"}
+{"id": "Q19", "question": "学校是否允许学生在宿舍饲养导盲犬等工作犬？如果允许，有哪些额外要求？", "category": "unanswerable", "should_answer": false, "source_hint": "特殊情形，规章一般未明确"}
+{"id": "Q20", "question": "请用英文详细介绍本校的奖学金种类和评选标准。", "category": "unanswerable", "should_answer": false, "source_hint": "英文问题且为任务型请求"}
