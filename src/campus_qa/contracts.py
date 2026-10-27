@@ -16,6 +16,7 @@ class RefuseReason(str, Enum):
 
     EMPTY_QUESTION = "empty_question"
     UNSUPPORTED_LANGUAGE = "unsupported_language"
+    AMBIGUOUS_QUESTION = "ambiguous_question"
     RETRIEVAL_EMPTY = "retrieval_empty"
     RETRIEVAL_LOW_SCORE = "retrieval_low_score"
     INVALID_MODEL_OUTPUT = "invalid_model_output"
@@ -35,6 +36,9 @@ class Citation(BaseModel):
     section: Optional[str] = None
     url: Optional[str] = None
 
+    # 模型挑选的 1-based 引用编号，供前端把正文 [N] 锚点定位到引用列表。
+    citation_index: Optional[int] = None
+
 
 class AnswerResult(BaseModel):
     """系统对单个提问的回答结果。"""
@@ -45,6 +49,9 @@ class AnswerResult(BaseModel):
     answer: Optional[str] = None
     citations: List[Citation] = Field(default_factory=list)
     confidence: Optional[float] = None
+
+    # 大模型基于当前问题与回答生成的建议追问（2–4 条）；拒答 / 摘录兜底为 None。
+    follow_up_questions: Optional[List[str]] = None
 
     # 不可回答题：标记 refused + refuse_reason
     refused: bool = False

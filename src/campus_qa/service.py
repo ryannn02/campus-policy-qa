@@ -82,6 +82,49 @@ def _contains_chinese(text: str) -> bool:
     return any("\u4e00" <= ch <= "\u9fff" for ch in text)
 
 
+# 任务型请求 / 输出语言要求 / 歧义检测的启发式规则。
+_TASK_REQUEST_RE = re.compile(
+    r"帮我写|帮我做|写一封|代写|替我写|帮我撰写|帮我起草|请帮我写|帮我写个|帮我做一下|帮我查一下"
+)
+
+_OUTPUT_LANGUAGE_RE = re.compile(
+    r"用英文|用英语|英文介绍|英文回答|英文说明|英文写|翻译成英文|翻译成英语|请用英文|请用英语"
+)
+
+# 泛化大类词：单独出现且无具体限定时，短问题常因信息不足而歧义。
+_AMBIGUOUS_TOPICS = ("奖学金", "助学金", "补助", "资助", "评优", "评奖", "荣誉", "处分", "加分", "补贴", "学分")
+_AMBIGUOUS_SPECIFIERS = ("国家", "励志", "学业", "研究生", "本科", "综合", "单项", "上海市", "优秀")
+
+
+def _requires_non_chinese_output(question: str) -> bool:
+    """识别「用英文 / 翻译」等要求非中文输出的提问。"""
+
+    return bool(_OUTPUT_LANGUAGE_RE.search(question))
+
+
+def _is_task_request(question: str) -> bool:
+    """识别「帮我写 / 代写 / 写一封」等任务型请求。"""
+
+    return bool(_TASK_REQUEST_RE.search(question))
+
+
+def _is_ambiguous(question: str) -> bool:
+    """识别过短且无具体指向的歧义提问。
+
+    仅当问题足够短（去标点 ≤10 字）、含泛化大类词、且不含具体限定词
+    时判为歧义，避免误伤「国家助学金怎么申请」等具体问题。
+    """
+
+    cleaned = re.sub(r"[\s，。！？、；：,.!?;:]+", "", question)
+    if len(cleaned) > 10:
+        return False
+    if not any(topic in cleaned for topic in _AMBIGUOUS_TOPICS):
+        return False
+    if any(spec in cleaned for spec in _AMBIGUOUS_SPECIFIERS):
+        return False
+    return True
+
+
 def _build_answer_from_citations(question: str, citations: List[Citation]) -> str:
     """生成摘录式兜底回答。
 
@@ -106,13 +149,14 @@ def _backfill_citations(candidates: List[Citation], numbers: List[int]) -> List[
 
     编号已在生成链内做范围与去重校验，这里只做防御性下标检查，
     保证回填出的引用一定来自本次检索结果，结构上杜绝编造引用。
+    同时把编号写入 ``citation_index``，供前端把正文 [N] 锚点定位到引用。
     """
 
     citations: List[Citation] = []
     for num in numbers:
         idx = num - 1
         if 0 <= idx < len(candidates):
-            citations.append(candidates[idx])
+            citations.append(candidates[idx].model_copy(update={"citation_index": num}))
     return citations
 
 
@@ -164,6 +208,30 @@ def answer_question(question: str) -> AnswerResult:
             refused=True,
             refuse_reason=RefuseReason.UNSUPPORTED_LANGUAGE,
             suggested_contact="请改用中文提问，或咨询辅导员。",
+        )
+
+    if _requires_non_chinese_output(question):
+        return AnswerResult(
+            question=question,
+            refused=True,
+            refuse_reason=RefuseReason.UNSUPPORTED_LANGUAGE,
+            suggested_contact="目前仅支持中文回答，请改用中文提问。",
+        )
+
+    if _is_task_request(question):
+        return AnswerResult(
+            question=question,
+            refused=True,
+            refuse_reason=RefuseReason.NO_EVIDENCE_IN_CORPUS,
+            suggested_contact="该请求超出校园制度问答范围，请咨询辅导员或相关部门。",
+        )
+
+    if _is_ambiguous(question):
+        return AnswerResult(
+            question=question,
+            refused=True,
+            refuse_reason=RefuseReason.AMBIGUOUS_QUESTION,
+            suggested_contact="问题信息不足，请补充具体制度名称或场景后重新提问。",
         )
 
     candidates = retrieve_candidates(question)
@@ -230,11 +298,13 @@ def answer_question(question: str) -> AnswerResult:
             suggested_contact=_SUGGESTED_CONTACT,
         )
 
+    follow_ups = getattr(generated, "follow_up_questions", None)
     return AnswerResult(
         question=question,
         answer=answer,
         citations=citations,
         confidence=generated.confidence,
+        follow_up_questions=list(follow_ups) if follow_ups else None,
         top_retrieval_score=top_score,
     )
 

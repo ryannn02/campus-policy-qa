@@ -14,6 +14,7 @@ def test_refuse_reason_values_match_api_contract() -> None:
     expected = {
         "empty_question",
         "unsupported_language",
+        "ambiguous_question",
         "retrieval_empty",
         "retrieval_low_score",
         "invalid_model_output",
@@ -29,12 +30,21 @@ def test_answer_result_defaults() -> None:
     assert result.refuse_reason is None
     assert result.citations == []
     assert result.answer is None
+    assert result.follow_up_questions is None
 
 
 def test_citation_requires_document_id_and_snippet() -> None:
     citation = Citation(document_id="doc-1", snippet="第十条 借阅期限为 60 天。", score=0.8)
     assert citation.page is None
     assert citation.section is None
+    assert citation.citation_index is None
+
+
+def test_citation_index_round_trips() -> None:
+    citation = Citation(
+        document_id="doc-1", snippet="第十条 借阅期限为 60 天。", score=0.8, citation_index=3
+    )
+    assert citation.citation_index == 3
 
 
 def test_settings_paths_point_into_repository() -> None:

@@ -103,6 +103,71 @@ def clean_text(text):
     return join_short_lines("\n".join(out))
 
 
+def _ocr_page(engine, page):
+    """对单页 PDF 渲染为位图并 OCR，返回按阅读顺序排好的文本行。
+
+    RapidOCR 返回的框顺序不稳定，需按 (y, x) 重排：y 相近的归为同一行，
+    行内按 x 升序拼接，恢复从左到右、从上到下的阅读顺序。
+    """
+    import fitz
+    import numpy as np
+
+    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+    if img.shape[2] == 4:
+        img = img[:, :, :3]
+    res, _ = engine(img)
+    if not res:
+        return ""
+    items = []
+    for box, txt, _score in res:
+        top = min(p[1] for p in box)
+        left = min(p[0] for p in box)
+        items.append((top, left, txt))
+    items.sort(key=lambda t: (t[0], t[1]))
+    # 同一行（top 差 ≤ 12px）合并，行内按 x 排序
+    rows = []
+    for top, left, txt in items:
+        if rows and abs(top - rows[-1][0]) <= 12:
+            rows[-1][1].append((left, txt))
+        else:
+            rows.append([top, [(left, txt)]])
+    out = []
+    for _, segs in rows:
+        segs.sort(key=lambda s: s[0])
+        out.append("".join(s[1] for s in segs))
+    return "\n".join(out)
+
+
+def _ocr_pdf(path):
+    """扫描件 PDF（无文字层）逐页 OCR，返回与 ``parse_pdf`` 相同的
+    ``[(text, pages)]`` 结构，页码按物理页保留。"""
+    import fitz
+
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+        engine = RapidOCR()
+    except Exception as exc:
+        print(f"    OCR 不可用（{exc}），扫描件跳过", file=sys.stderr)
+        return []
+
+    doc = fitz.open(str(path))
+    parts = []
+    for i, page in enumerate(doc):
+        parts.append((i + 1, _ocr_page(engine, page)))
+    doc.close()
+    text = "\n".join(t for _, t in parts)
+    if len(text.strip()) < MIN_DOC_CHARS:
+        return []
+    pages = []
+    cursor = 0
+    for pno, t in parts:
+        start = cursor
+        cursor += len(t) + 1
+        pages.append((pno, start, cursor))
+    return [(text, pages)]
+
+
 def parse_pdf(path):
     import fitz
 
@@ -115,7 +180,8 @@ def parse_pdf(path):
         return []
     text = "\n".join(t for _, t in parts)
     if len(text.strip()) < MIN_DOC_CHARS:
-        return []
+        # 扫描件：无文字层，回退 OCR
+        return _ocr_pdf(path)
     pages = []
     cursor = 0
     for pno, t in parts:

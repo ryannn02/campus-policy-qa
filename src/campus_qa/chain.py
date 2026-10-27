@@ -1,14 +1,15 @@
 """生成链实现：版本化提示词 + JSON 结构化输出 + 引用编号回填。
 
 职责（成员 B，RAG 核心）：
-- 从 ``prompts/answer/v1.md`` 读取版本化提示词模板；
+- 从 ``prompts/answer/`` 最新版本提示词（当前 v3）读取模板，缺失时逐级回退；
 - 使用 LangChain 组合 ``ChatPromptTemplate → ChatOpenAI → StrOutputParser``；
-- 要求模型输出合法 JSON：``{"answer": ..., "citations": [编号]}``；
+- 要求模型输出合法 JSON：``{"answer": ..., "citations": [编号], "follow_up_questions": [...]}``；
 - 校验引用编号必须落在候选条款 ``[1..N]`` 范围内，杜绝编造引用；
-- 返回 ``GeneratedAnswer``（answer / citation_numbers / confidence），
+- 解析建议追问 ``follow_up_questions``（缺失 / 非字符串列表取空列表）；
+- 返回 ``GeneratedAnswer``（answer / citation_numbers / confidence / follow_up_questions），
   由 service 层按编号回填为 ``Citation`` 列表。
 
-当 v1.md 缺失时回退到内置默认模板；模型输出非法 JSON 时抛
+所有版本化提示词都缺失时回退到内置默认模板；模型输出非法 JSON 时抛
 ``InvalidModelOutputError``，交由 service 层映射为拒答。
 """
 
@@ -16,7 +17,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -30,17 +31,19 @@ from .contracts import Citation
 
 PROMPT_DIR = Path(__file__).resolve().parents[2] / "prompts" / "answer"
 # 提示词按版本演进：优先最新版本，vN 缺失或损坏时回退上一版本。
-# v1 永不删，作为基线；v2 提升回答的自然与亲和度。
-_PROMPT_FILES = [PROMPT_DIR / "v2.md", PROMPT_DIR / "v1.md"]
+# v1 永不删，作为基线；v2 提升回答的自然与亲和度；v3 增加建议追问与正文锚点。
+_PROMPT_FILES = [PROMPT_DIR / "v3.md", PROMPT_DIR / "v2.md", PROMPT_DIR / "v1.md"]
 
 
 @dataclass
 class GeneratedAnswer:
-    """生成链的结构化返回：答案 + 引用编号 + 置信度。"""
+    """生成链的结构化返回：答案 + 引用编号 + 置信度 + 建议追问。"""
 
     answer: str
     citation_numbers: List[int]
     confidence: float
+    # 大模型基于当前问题与回答生成的建议追问（2–4 条）；无则空列表。
+    follow_up_questions: List[str] = field(default_factory=list)
 
 
 class InvalidModelOutputError(Exception):
@@ -64,7 +67,7 @@ _prompt_cache: Optional[Tuple[str, str]] = None
 
 
 def _extract_section(text: str, tag: str) -> str:
-    """从 v1.md 提取 ``<!-- SYSTEM -->`` / ``<!-- HUMAN -->`` 段。"""
+    """从提示词文件提取 ``<!-- SYSTEM -->`` / ``<!-- HUMAN -->`` 段。"""
 
     pattern = re.compile(rf"<!--\s*{tag}\s*-->(.*?)(?=<!--|\Z)", re.DOTALL)
     match = pattern.search(text)
@@ -158,10 +161,31 @@ def _normalize_citations(raw: object, n: int) -> List[int]:
     return numbers
 
 
-def _parse_llm_output(raw: str, n: int) -> Tuple[str, List[int]]:
-    """解析模型输出为 (answer, citation_numbers)。
+def _parse_follow_ups(raw: object) -> List[str]:
+    """解析 follow_up_questions 字段。
 
-    JSON 解析失败或不是对象时抛 ``InvalidModelOutputError``。
+    缺失或不是字符串列表时返回空列表，不判非法输出；
+    列表内非字符串项直接跳过，字符串项去空白后保留非空值。
+    """
+
+    if not isinstance(raw, list):
+        return []
+
+    follow_ups: List[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        cleaned = item.strip()
+        if cleaned:
+            follow_ups.append(cleaned)
+    return follow_ups
+
+
+def _parse_llm_output(raw: str, n: int) -> Tuple[str, List[int], List[str]]:
+    """解析模型输出为 (answer, citation_numbers, follow_up_questions)。
+
+    JSON 解析失败或不是对象时抛 ``InvalidModelOutputError``；
+    follow_up_questions 缺失 / 非字符串列表时取空列表，不判非法。
     """
 
     text = _extract_json_object(raw)
@@ -175,7 +199,8 @@ def _parse_llm_output(raw: str, n: int) -> Tuple[str, List[int]]:
 
     answer = str(data.get("answer", "")).strip()
     numbers = _normalize_citations(data.get("citations"), n)
-    return answer, numbers
+    follow_ups = _parse_follow_ups(data.get("follow_up_questions"))
+    return answer, numbers, follow_ups
 
 
 def generate_answer_with_citations(
@@ -185,7 +210,8 @@ def generate_answer_with_citations(
     """调用单一 LLM 生成带引用的结构化回答。
 
     - 输入：原始问题与检索得出的候选条款；
-    - 输出：``GeneratedAnswer``，含 answer、citation_numbers、confidence；
+    - 输出：``GeneratedAnswer``，含 answer、citation_numbers、confidence、
+      follow_up_questions；
     - 无候选条款时直接返回空结果，不发起 LLM 调用。
 
     模型输出非法 JSON 时抛 ``InvalidModelOutputError``，
@@ -209,14 +235,19 @@ def generate_answer_with_citations(
     context = _format_context(candidates)
     raw = chain.invoke({"question": question, "context": context})
 
-    answer, numbers = _parse_llm_output(raw, len(candidates))
+    answer, numbers, follow_ups = _parse_llm_output(raw, len(candidates))
 
     # 置信度：检索 top-1 分按有效引用率折减，避免"引用多但检索分低"虚高。
     top_score = max(c.score for c in candidates)
     citation_ratio = len(numbers) / max(len(candidates), 1)
     confidence = float(top_score * (0.5 + 0.5 * citation_ratio))
 
-    return GeneratedAnswer(answer=answer, citation_numbers=numbers, confidence=confidence)
+    return GeneratedAnswer(
+        answer=answer,
+        citation_numbers=numbers,
+        confidence=confidence,
+        follow_up_questions=follow_ups,
+    )
 
 
 __all__ = [

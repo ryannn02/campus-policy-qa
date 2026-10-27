@@ -15,7 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # 重新解析原始文件时才需要；只跑问答不必装
-ingest = ["beautifulsoup4>=4.12", "pypdf>=4.0", "pymupdf>=1.24", "python-docx>=1.1"]
+ingest = ["beautifulsoup4>=4.12", "pypdf>=4.0", "pymupdf>=1.24", "python-docx>=1.1", "rapidocr-onnxruntime>=1.3"]
 dev = ["pytest>=8"]
 
 [build-system]

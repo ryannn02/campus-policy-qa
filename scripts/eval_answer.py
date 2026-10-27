@@ -68,13 +68,15 @@ def _category_of(item: dict) -> str:
     return "unanswerable"
 
 
-def _hit_gold(gold: list, doc_ids: Iterable[str]) -> bool:
-    """判断检索/引用的 document_id 集合是否命中任一黄金来源段落。"""
+def _hit_gold(gold: list, citations: Iterable[Citation]) -> bool:
+    """判断检索/引用结果是否命中任一黄金来源段落（chunk 级 snippet 精确匹配）。"""
 
     if not gold:
         return False
-    gold_ids = {g.get("document_id") for g in gold if g.get("document_id")}
-    return bool(gold_ids & set(doc_ids))
+    gold_snips = {str(g.get("snippet", "")).strip() for g in gold if g.get("snippet")}
+    if not gold_snips:
+        return False
+    return any(c.snippet.strip() in gold_snips for c in citations)
 
 
 def _compute_metrics(cases: List[Tuple[dict, AnswerResult]]) -> dict:
@@ -105,12 +107,12 @@ def _compute_metrics(cases: List[Tuple[dict, AnswerResult]]) -> dict:
             gold_annotated += 1
             # Recall@5：单独取检索 top-k 候选，判断是否命中黄金来源。
             candidates = retrieve_candidates(str(item.get("question", "")))
-            if _hit_gold(gold, (c.document_id for c in candidates[:5])):
+            if _hit_gold(gold, candidates[:5]):
                 recall_hits += 1
             # 有据可依率：作答且引用命中黄金来源。
             if not result.refused:
                 grounded_answered += 1
-                if _hit_gold(gold, (c.document_id for c in result.citations)):
+                if _hit_gold(gold, result.citations):
                     grounded_hits += 1
 
         if expect_answer:

@@ -37,10 +37,12 @@
       "score": 0.92,
       "page": 3,
       "section": "第二章 第三节",
-      "url": "https://example.edu/policies/library/borrowing#section-2-3"
+      "url": "https://example.edu/policies/library/borrowing#section-2-3",
+      "citation_index": 1
     }
   ],
   "confidence": 0.88,
+  "follow_up_questions": ["补考课程冲突怎么处理？", "缓考申请需要提交哪些材料？"],
   "refused": false,
   "refuse_reason": null,
   "top_retrieval_score": 0.92,
@@ -57,11 +59,14 @@
   - `page`：可选，文档页码，便于前端跳转到原文。
   - `section`：可选，文档章节标题或编号。
   - `url`：可选，原文在 Web 上的跳转链接。
+  - `citation_index`：可选，模型挑选的 1-based 引用编号，前端据此把正文 `[N]` 锚点定位到引用列表。
 - `confidence`：可选浮点数，系统对当前答案的整体置信度。
+- `follow_up_questions`：可选字符串数组，大模型基于当前问题与回答生成的建议追问（2–4 条）；拒答 / 摘录兜底时为 `null`，由前端回退关键词映射。
 - `refused`：布尔值，是否拒答（不可回答题标记为 `true`）。
 - `refuse_reason`：可选字符串枚举，拒答原因代码，等价于 `RefuseReason`：
   - `"empty_question"`
   - `"unsupported_language"`
+  - `"ambiguous_question"`
   - `"retrieval_empty"`
   - `"retrieval_low_score"`
   - `"invalid_model_output"`

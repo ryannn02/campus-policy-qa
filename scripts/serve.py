@@ -35,7 +35,7 @@ LATENCY_TARGET_ADVANCED_SECONDS = 5.0
 _MAX_LATENCY_SAMPLES = 1000
 
 
-PAGE_HTML = """<!DOCTYPE html>
+PAGE_HTML = r"""<!DOCTYPE html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
@@ -104,6 +104,10 @@ PAGE_HTML = """<!DOCTYPE html>
       .citations ul { padding-left: 1.2rem; margin: 0.25rem 0 0; }
       .citations li { margin-bottom: 0.4rem; font-size: 0.9rem; color: #374151; }
       .citations a { color: #2563eb; text-decoration: none; margin-left: 0.3rem; }
+      sup.cite-anchor { color: #2563eb; cursor: pointer; font-weight: 600; margin: 0 1px; }
+      sup.cite-anchor:hover { text-decoration: underline; }
+      .citation-item { transition: background-color 0.2s ease; border-radius: 4px; }
+      .citation-item.active, sup.cite-anchor.active { background-color: #fef08a; }
       .meta { font-size: 0.85rem; color: #6b7280; margin: 0.5rem 0; text-align: left; }
       .followup { margin-top: 1.25rem; text-align: left; }
       .footer { margin-top: 1.5rem; font-size: 0.8rem; color: #9ca3af; }
@@ -176,6 +180,8 @@ PAGE_HTML = """<!DOCTYPE html>
             return '请输入具体的校园制度问题。';
           case 'unsupported_language':
             return '目前仅支持中文提问，请改用中文。';
+          case 'ambiguous_question':
+            return '问题信息不足，请补充具体制度名称或场景后重新提问。';
           case 'retrieval_empty':
             return '暂未找到相关制度条款，请确认问题表述。';
           case 'retrieval_low_score':
@@ -219,7 +225,7 @@ PAGE_HTML = """<!DOCTYPE html>
         ask();
       }
 
-      function renderFollowups(q) {
+      function renderFollowups(q, backendQuestions) {
         followupEl.innerHTML = '';
         const label = document.createElement('div');
         label.className = 'section-label';
@@ -228,7 +234,49 @@ PAGE_HTML = """<!DOCTYPE html>
         const chips = document.createElement('div');
         chips.className = 'chips';
         followupEl.appendChild(chips);
-        renderChips(chips, followUpSuggestions(q));
+        const hasBackend = Array.isArray(backendQuestions) && backendQuestions.length > 0;
+        const questions = hasBackend ? backendQuestions : followUpSuggestions(q);
+        renderChips(chips, questions);
+      }
+
+      function highlightCitation(n) {
+        const target = document.getElementById('cite-' + n);
+        if (!target) return;
+        document.querySelectorAll('sup.cite-anchor.active, li.citation-item.active').forEach(function (el) {
+          el.classList.remove('active');
+        });
+        document.querySelectorAll('sup.cite-anchor[data-cite="' + n + '"]').forEach(function (el) {
+          el.classList.add('active');
+        });
+        target.classList.add('active');
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      function renderAnswerWithAnchors(container, answerText, citations) {
+        container.textContent = '';
+        const citeMap = {};
+        (citations || []).forEach(function (c) {
+          if (typeof c.citation_index === 'number') {
+            citeMap[c.citation_index] = true;
+          }
+        });
+        const parts = (answerText || '').split(/(\[\d+\])/);
+        parts.forEach(function (part) {
+          const m = part.match(/^\[(\d+)\]$/);
+          if (m && Object.prototype.hasOwnProperty.call(citeMap, m[1])) {
+            const sup = document.createElement('sup');
+            sup.className = 'cite-anchor';
+            sup.textContent = part;
+            sup.setAttribute('data-cite', m[1]);
+            sup.title = '查看引用条款 ' + m[1];
+            sup.addEventListener('click', function () {
+              highlightCitation(m[1]);
+            });
+            container.appendChild(sup);
+          } else {
+            container.appendChild(document.createTextNode(part));
+          }
+        });
       }
 
       async function ask() {
@@ -267,6 +315,8 @@ PAGE_HTML = """<!DOCTYPE html>
           if (data.refused) {
             const msg = refuseMessage(data.refuse_reason);
             answerEl.textContent = msg || (data.answer || '当前问题暂无法回答。');
+          } else if (Array.isArray(data.citations) && data.citations.length > 0) {
+            renderAnswerWithAnchors(answerEl, data.answer || '系统未返回答案。', data.citations);
           } else {
             answerEl.textContent = data.answer || '系统未返回答案。';
           }
@@ -275,6 +325,10 @@ PAGE_HTML = """<!DOCTYPE html>
             const list = document.createElement('ul');
             data.citations.forEach(function (c) {
               const li = document.createElement('li');
+              li.className = 'citation-item';
+              if (typeof c.citation_index === 'number') {
+                li.id = 'cite-' + c.citation_index;
+              }
               const snippet = c.snippet || '';
               const docId = c.document_id || '[未命名文档]';
               const metaParts = [];
@@ -282,7 +336,11 @@ PAGE_HTML = """<!DOCTYPE html>
               if (typeof c.page === 'number') metaParts.push('page: ' + c.page);
               if (c.section) metaParts.push('section: ' + c.section);
 
-              let text = '[' + docId + '] ' + snippet;
+              let text = '';
+              if (typeof c.citation_index === 'number') {
+                text += '[' + c.citation_index + '] ';
+              }
+              text += '[' + docId + '] ' + snippet;
               if (metaParts.length) {
                 text += ' (' + metaParts.join(', ') + ')';
               }
@@ -321,7 +379,7 @@ PAGE_HTML = """<!DOCTYPE html>
           }
           metaEl.textContent = metaParts.join('  |  ');
 
-          renderFollowups(q);
+          renderFollowups(q, data.follow_up_questions);
         } catch (err) {
           console.error(err);
           statusEl.textContent = (err && err.message) || '服务暂时不可用，请稍后重试。';

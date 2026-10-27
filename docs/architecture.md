@@ -35,12 +35,13 @@
 | code | 触发方 | 含义 |
 | --- | --- | --- |
 | `empty_question` | 代码 | 输入为空或纯空白 |
-| `unsupported_language` | 代码 | 提问不含中文 |
+| `unsupported_language` | 代码 | 提问不含中文，或要求非中文输出 |
+| `ambiguous_question` | 代码 | 过短且无具体指向的歧义提问 |
 | `retrieval_empty` | 代码 | 没召回任何条款 |
 | `retrieval_low_score` | 代码 | top-1 低于 τ |
 | `invalid_model_output` | 代码 | 模型输出不是合法 JSON |
 | `no_valid_citation` | 代码 | 模型没给出有效编号 |
-| `no_evidence_in_corpus` | 模型 | 条款支撑不住问题 |
+| `no_evidence_in_corpus` | 模型 | 条款支撑不住问题（含任务型请求等超范围提问） |
 
 ## 从旧项目继承
 

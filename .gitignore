@@ -9,6 +9,7 @@ __pycache__/
 data/raw/
 data/parsed/
 data/index/
+data/removed/
 data/*.log
 reports/
 

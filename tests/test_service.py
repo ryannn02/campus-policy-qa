@@ -82,6 +82,72 @@ def test_rejects_non_chinese_question(monkeypatch) -> None:
     assert result.suggested_contact
 
 
+def test_rejects_non_chinese_output_requirement(monkeypatch) -> None:
+    def _fail(_question: str) -> List[Citation]:  # pragma: no cover - 不应被调用
+        raise AssertionError("要求非中文输出的问题不应进入检索")
+
+    monkeypatch.setattr(service, "retrieve_candidates", _fail)
+
+    result = service.answer_question("请用英文详细介绍本校的奖学金种类和评选标准。")
+
+    assert result.refused is True
+    assert result.refuse_reason is RefuseReason.UNSUPPORTED_LANGUAGE
+
+
+def test_rejects_task_request(monkeypatch) -> None:
+    def _fail(_question: str) -> List[Citation]:  # pragma: no cover - 不应被调用
+        raise AssertionError("任务型请求不应进入检索")
+
+    monkeypatch.setattr(service, "retrieve_candidates", _fail)
+
+    result = service.answer_question("能不能帮我写一封向辅导员请假的邮件？")
+
+    assert result.refused is True
+    assert result.refuse_reason is RefuseReason.NO_EVIDENCE_IN_CORPUS
+
+
+def test_rejects_ambiguous_question(monkeypatch) -> None:
+    def _fail(_question: str) -> List[Citation]:  # pragma: no cover - 不应被调用
+        raise AssertionError("歧义问题不应进入检索")
+
+    monkeypatch.setattr(service, "retrieve_candidates", _fail)
+
+    result = service.answer_question("奖学金怎么拿到？")
+
+    assert result.refused is True
+    assert result.refuse_reason is RefuseReason.AMBIGUOUS_QUESTION
+
+
+def test_specific_question_is_not_ambiguous(monkeypatch) -> None:
+    """含具体限定的短问题（如「国家助学金」）不应被误判为歧义。"""
+
+    monkeypatch.setattr(service, "retrieve_candidates", lambda _q: [_citation(0.66)])
+    monkeypatch.setattr(
+        service,
+        "_generate_answer",
+        lambda _q, _c: GeneratedAnswer("国家助学金需满足家庭经济困难等条件。", [1], 0.66),
+    )
+
+    result = service.answer_question("国家助学金怎么申请？")
+
+    assert result.refused is False
+    assert result.citations
+
+
+def test_rejects_ambiguous_credit_question(monkeypatch) -> None:
+    """「学分不够怎么办」这类过短且无具体指向的问题应判为歧义。"""
+
+    def _fail(_question: str) -> List[Citation]:  # pragma: no cover - 不应被调用
+        raise AssertionError("歧义问题不应进入检索")
+
+    monkeypatch.setattr(service, "retrieve_candidates", _fail)
+
+    result = service.answer_question("学分不够怎么办？")
+
+    assert result.refused is True
+    assert result.refuse_reason is RefuseReason.AMBIGUOUS_QUESTION
+
+
 def test_rejects_empty_question() -> None:
     result = service.answer_question("   ")
 
@@ -210,3 +276,49 @@ def test_threshold_is_configurable(monkeypatch) -> None:
 
     assert result.refused is True
     assert result.refuse_reason is RefuseReason.RETRIEVAL_LOW_SCORE
+
+
+def test_backfill_sets_citation_index(monkeypatch) -> None:
+    """回填引用时应写入模型挑选的 1-based 编号，供前端正文锚点定位。"""
+
+    candidates = [_citation(0.9), _citation(0.8), _citation(0.7)]
+    citations = service._backfill_citations(candidates, [3, 1])
+
+    assert [c.citation_index for c in citations] == [3, 1]
+    assert [c.score for c in citations] == [0.7, 0.9]
+
+
+def test_passes_follow_up_questions_when_present(monkeypatch) -> None:
+    generated = GeneratedAnswer("本科生可同时借阅 30 册。", [1], 0.66)
+    generated.follow_up_questions = ["补考课程冲突怎么处理？", "缓考申请需要哪些材料？"]
+    monkeypatch.setattr(service, "retrieve_candidates", lambda _q: [_citation(0.66)])
+    monkeypatch.setattr(service, "_generate_answer", lambda _q, _c: generated)
+
+    result = service.answer_question("图书馆能借几本书？")
+
+    assert result.refused is False
+    assert result.follow_up_questions == ["补考课程冲突怎么处理？", "缓考申请需要哪些材料？"]
+
+
+def test_follow_up_none_when_generated_lacks_field(monkeypatch) -> None:
+    """生成链尚未返回 follow_up_questions 时，透传结果应为 None。"""
+
+    generated = GeneratedAnswer("本科生可同时借阅 30 册。", [1], 0.66)
+    monkeypatch.setattr(service, "retrieve_candidates", lambda _q: [_citation(0.66)])
+    monkeypatch.setattr(service, "_generate_answer", lambda _q, _c: generated)
+
+    result = service.answer_question("图书馆能借几本书？")
+
+    assert result.refused is False
+    assert result.follow_up_questions is None
+
+
+def test_follow_up_none_on_refusal(monkeypatch) -> None:
+    """拒答路径不产生追问建议。"""
+
+    monkeypatch.setattr(service, "retrieve_candidates", lambda _q: [])
+
+    result = service.answer_question("图书馆能借几本书？")
+
+    assert result.refused is True
+    assert result.follow_up_questions is None
