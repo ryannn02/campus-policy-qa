@@ -36,7 +36,8 @@ docs/            架构与项目文档
 ## 快速开始
 
 ```bash
-uv sync --extra dev                    # 或 .venv 已就绪则跳过
+uv sync --extra dev                    # 安装依赖；或 .venv 已就绪则跳过
+source .venv/bin/activate              # 激活虚拟环境（后续 python 命令在此环境执行；或用 uv run 前缀）
 uv sync --extra ingest                 # 仅当要重新解析 data/raw 原始文件时安装解析依赖
 cp .env.example .env                   # 若无 .env.example，按下方变量表自建 .env
 python -m scripts.ingest               # 仅当 data/raw 有增删时：重建 data/parsed + chunks.jsonl
