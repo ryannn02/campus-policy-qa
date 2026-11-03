@@ -143,29 +143,32 @@ scripts/eval_answer.py（批量评测）                          ├─ GET  / 
 ## 七、评测现状
 
 `python -m scripts.eval_answer` 跑 `eval/questions.jsonl`（162 题，四类：answerable 101 /
-unanswerable 36 / multi-hop 15 / ambiguous 10，gold 覆盖 71.6%），指标写入 `eval/report.md`：
+unanswerable 36 / multi-hop 15 / ambiguous 10，gold 覆盖 100%），指标写入 `eval/report.md`：
 
 | 指标 | 当前 | 目标 | 状态 |
 | --- | --- | --- | --- |
-| `answer_rate` | 0.991 | — | — |
-| `refusal_rate` | 0.609 | ≥0.50 | ✅ |
-| `refuse_failure_rate` | 0.111 | ≤0.15 | ✅ |
-| `grounded_rate` | 0.722 | ≥0.80 | ❌ |
-| `recall_at_5` | 0.733 | ≥0.75 | ❌ |
+| `answer_rate` | 1.000 | — | — |
+| `refusal_rate` | 0.935 | ≥0.50 | ✅ |
+| `refuse_failure_rate` | 0.019 | ≤0.15 | ✅ |
+| `grounded_rate` | 0.776 | ≥0.80 | ❌ 差 0.024 |
+| `recall_at_5` | 0.802 | ≥0.75 | ✅ |
 
-口径：`recall_at_5` 与 `grounded_rate` 只在有 gold 标注的题上计算；`refuse_failure_rate`
-以全量为分母。未达标用例的归因见 `eval/badcase.md`，当前 15 条一律归到
-「`no_evidence_in_corpus` 判定不够坚决」。
+口径说明：
+
+- `recall_at_5` / `grounded_rate` 只在「可回答题且带 gold」的题上计算（分母 116 条）；`refuse_failure_rate` 以全量为分母。
+- `grounded_rate` 采用 **snippet 精确匹配**（答案引用的 chunk 全文须与 gold 标注 snippet 逐字一致），属较严口径。实测 `Recall@5` 0.802 已达标，但模型从 top-5 候选挑选引用时偶未选中 gold 标注的那个 chunk（选中同文档相邻条款），导致 `grounded_rate` 0.776 距 0.80 差 0.024（约 3 条题）。
+- 该差距为 **M3 如实记录、接受现状项**，优化转入 M4（提示词强化引用精确性，见第八节）。
+- 误答用例归因见 `eval/badcase.md`（当前 2–3 条，随 LLM 运行波动）。
 
 ## 八、里程碑与后续
 
 - **M1**（已验收）：从 CLI 输入中文问题，端到端输出结构化 `AnswerResult`。
-- **M2**（收尾中）：拒答收紧、评测集扩至 162 题、OCR 与遗留文件处置、可点击引用锚点、
-  动态追问。已完成项见 `docs/m2_plan.md`，剩余项：
-  1. `grounded_rate` / `recall_at_5` 未达标（检索与 gold 标注两侧）；
-  2. 15 条 unanswerable badcase 需强化提示词判定；
-  3. 运行时无版本时效过滤（见第六节缺口）；
-  4. 无 lint / 类型检查 / CI，测试靠本地 `python -m pytest -q`。
+- **M2**（已验收）：拒答收紧、评测集扩至 162 题、OCR 与遗留文件处置、可点击引用锚点、动态追问（见 `docs/m2_plan.md`）。
+- **M3**（已验收，4/5 指标达标）：BM25 + 向量多路召回（RRF 融合）、gold 标注 100%、领域相关性拒答判定。`Recall@5` 0.802 ✅、`refuse_failure_rate` 0.019 ✅、`refusal_rate` 0.935 ✅；`grounded_rate` 0.776 距 0.80 差 0.024，如实记录、接受现状。
+- **M4 剩余项**：
+  1. `grounded_rate` 冲刺 0.80：提示词强化「优先引用与问题最直接相关的条款编号」（成员 B）；
+  2. 运行时无版本时效过滤（见第六节缺口，成员 A/B）；
+  3. 无 lint / 类型检查 / CI，测试靠本地 `python -m pytest -q`（成员 E）。
 
 ## 九、从旧项目继承
 
