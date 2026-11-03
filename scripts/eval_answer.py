@@ -161,8 +161,55 @@ def _fmt(value: float, digits: int = 3) -> str:
     return f"{value:.{digits}f}"
 
 
-def _render_markdown(metrics: dict, mismatches: List[Tuple[dict, AnswerResult]]) -> str:
-    """把指标与 mismatch 渲染为 Markdown 报告。"""
+def _render_case_details(cases: List[Tuple[dict, AnswerResult]]) -> List[str]:
+    """渲染逐条结果明细表：每条一行，含判定与结果摘要说明。"""
+
+    lines: List[str] = [
+        "## 逐条结果明细",
+        "",
+        "| ID | 问题 | 类别 | 期望 | 实际 | 判定 | 拒答原因 | top_score | 引用数 | 命中gold | 结果摘要 |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for item, result in cases:
+        qid = str(item.get("id", "-"))
+        question = str(item.get("question", "")).replace("|", "\\|").replace("\n", " ")
+        category = _category_of(item)
+        expect_answer = bool(item.get("should_answer", True))
+        expected = "answer" if expect_answer else "refuse"
+        actual = "refuse" if result.refused else "answer"
+        verdict = "✅" if expected == actual else "❌"
+        reason = result.refuse_reason.value if result.refuse_reason else "-"
+        score = result.top_retrieval_score
+        score_text = _fmt(score) if score is not None else "-"
+        n_cites = len(result.citations)
+
+        gold = item.get("gold") or []
+        # 仅可回答题的 gold 参与命中判定；不可回答题的 gold 是干扰标注，显示 —。
+        if gold and expect_answer:
+            gold_hit = _hit_gold(gold, result.citations)
+            gold_text = "✅" if gold_hit else "❌"
+        else:
+            gold_text = "—"
+
+        if result.refused:
+            summary = (result.suggested_contact or reason or "").replace("|", "\\|").replace("\n", " ")
+        else:
+            summary = (result.answer or "").replace("|", "\\|").replace("\n", " ")
+        summary = (summary[:40] + "…") if len(summary) > 40 else summary
+
+        lines.append(
+            f"| {qid} | {question} | {category} | {expected} | {actual} | {verdict} | "
+            f"{reason} | {score_text} | {n_cites} | {gold_text} | {summary} |"
+        )
+    return lines + [""]
+
+
+def _render_markdown(
+    metrics: dict,
+    mismatches: List[Tuple[dict, AnswerResult]],
+    cases: List[Tuple[dict, AnswerResult]],
+) -> str:
+    """把指标、mismatch 与逐条结果明细渲染为 Markdown 报告。"""
 
     counts = metrics["counts"]
     lines: List[str] = [
@@ -235,6 +282,8 @@ def _render_markdown(metrics: dict, mismatches: List[Tuple[dict, AnswerResult]])
             )
         lines.append("")
 
+    lines += _render_case_details(cases)
+
     return "\n".join(lines)
 
 
@@ -261,7 +310,7 @@ def main() -> None:
         if bool(item.get("should_answer", True)) == bool(result.refused)
     ]
 
-    report = _render_markdown(metrics, mismatches)
+    report = _render_markdown(metrics, mismatches, cases)
     print(report)
 
     try:
