@@ -433,7 +433,9 @@ def main():
     print(f"待解析 {len(rows)} 条")
 
     failures, chunk_rows, n_chunks = [], [], 0
-    for r in rows:
+    for idx, r in enumerate(rows, start=1):
+        scan_hint = "（扫描件，OCR 较慢）" if str(r.get("is_scanned", "")).lower() == "true" else ""
+        print(f"[{idx}/{len(rows)}] {r['dept']} {r['title'][:40]}{scan_hint}", flush=True)
         local = Path(r["local_path"])
         # local_path 是相对路径（data/raw/...），必须锚定项目根目录解析，
         # 否则从非根目录（如 IDE 运行配置）启动时会全部「找不到文件」。
