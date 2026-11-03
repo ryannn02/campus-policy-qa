@@ -420,9 +420,9 @@ def clear_parsed():
 
 
 def main():
-    ap = argparse.ArgumentParser(description="解析与切分：raw → parsed → chunks.jsonl")
+    ap = argparse.ArgumentParser(description="解析与切分：raw → parsed → chunks.jsonl")#创建命令行参数解析器
     ap.add_argument("--prune-empty", action="store_true",
-                    help="把正文为空的网页条目标成 excluded（写入 meta/documents.csv）")
+                    help="把正文为空的网页条目标成 excluded（写入 meta/documents.csv）")#作用是把正文为空的网页条目标记为 excluded 并写回元数据表。
     args = ap.parse_args()
 
     PARSED.mkdir(parents=True, exist_ok=True)
@@ -434,7 +434,10 @@ def main():
 
     failures, chunk_rows, n_chunks = [], [], 0
     for r in rows:
-        path = Path(r["local_path"])
+        local = Path(r["local_path"])
+        # local_path 是相对路径（data/raw/...），必须锚定项目根目录解析，
+        # 否则从非根目录（如 IDE 运行配置）启动时会全部「找不到文件」。
+        path = local if local.is_absolute() else ROOT_DIR / local
         parser = PARSERS.get(r["format"])
         if not path.exists() or parser is None:
             failures.append({**r, "reason": "file_missing_or_unsupported_format"})
@@ -465,10 +468,6 @@ def main():
             chunk_rows.append(c)
             n_chunks += 1
 
-    with CHUNKS.open("w", encoding="utf-8") as f:
-        for c in chunk_rows:
-            f.write(json.dumps(c, ensure_ascii=False) + "\n")
-
     if failures:
         with FAILURES.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=list(failures[0].keys()))
@@ -476,9 +475,17 @@ def main():
             w.writerows(failures)
 
     if not chunk_rows and failures:
+        # 全部失败：保留现有 chunks.jsonl 不动，避免一次失败的运行清空可用数据。
         print("\n没有解析出任何内容。若 data/raw 是空的，请先从共享位置同步原始文件再跑；"
               "若确实有文件，检查 reports/parse_failures.csv 的原因列。", file=sys.stderr)
         return 2
+
+    # 先写临时文件，成功后原子替换，避免中途中断留下空/半截文件。
+    tmp_chunks = CHUNKS.with_suffix(".jsonl.tmp")
+    with tmp_chunks.open("w", encoding="utf-8") as f:
+        for c in chunk_rows:
+            f.write(json.dumps(c, ensure_ascii=False) + "\n")
+    tmp_chunks.replace(CHUNKS)
 
     if args.prune_empty:
         prune_empty(failures)
