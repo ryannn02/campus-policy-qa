@@ -47,7 +47,9 @@ scripts/eval_answer.py（批量评测）                          ├─ GET  / 
               retriever.retrieve_candidates(question) -> List[Citation]
                  · 惰性加载 npy + manifest + chunks（长度取 min 对齐）
                  · 问题前置 manifest.query_prefix 后编码（512 维）
-                 · 归一化 → 矩阵点积 → argsort → top_k=5、per_doc=2
+                 · 向量路：归一化 → 矩阵点积 → argsort
+                 · BM25 路：字符级 2-gram 倒排打分（RETRIEVAL_ENABLE_BM25 开关）
+                 · RRF 融合两路 → top_k=5、per_doc=3（实验最优，见 .evallogs 对比）
                                    ▼
               chain.generate_answer_with_citations(question, candidates)
                  · 提示词：prompts/answer/v3.md（v3→v2→v1→内置模板逐级回退）
@@ -88,7 +90,7 @@ scripts/eval_answer.py（批量评测）                          ├─ GET  / 
 
 | 模块 | 职责 | 关键实现 |
 | --- | --- | --- |
-| `config.py` | 路径与模型配置 | 绝对路径锚定仓库根；密钥按 `LLM_*→DEEPSEEK_*→OPENAI_*` 回退；`bge-small-zh-v1.5` 自动补 `BAAI/`；`Settings` 为 frozen dataclass，默认 `top_k=5 / per_doc=2 / τ=0.35` |
+| `config.py` | 路径与模型配置 | 绝对路径锚定仓库根；密钥按 `LLM_*→DEEPSEEK_*→OPENAI_*` 回退；`bge-small-zh-v1.5` 自动补 `BAAI/`；`Settings` 为 frozen dataclass，默认 `top_k=5 / per_doc=3 / τ=0.35 / BM25 开、bm25_top_k=10` |
 | `contracts.py` | 对外契约 | `RefuseReason` 8 个 code；`Citation`（含 `page/section/url/citation_index`）；`AnswerResult`（含 `follow_up_questions`） |
 | `retriever.py` | 召回 | 惰性加载并 `min(chunks, embeddings)` 对齐；`_coerce_page` 清洗空字符串页码；模型加载失败只重试一次后停用；索引/模型不可用退化为 2 条内置样本的字符 Jaccard |
 | `chain.py` | 生成 | 版本化提示词；容忍 ```json 围栏与前后废话的 JSON 截取；引用编号去重 + 越界丢弃；`confidence = top1 × (0.5 + 0.5 × 有效引用率)`；非法 JSON 抛 `InvalidModelOutputError` |

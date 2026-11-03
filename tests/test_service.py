@@ -322,3 +322,52 @@ def test_follow_up_none_on_refusal(monkeypatch) -> None:
 
     assert result.refused is True
     assert result.follow_up_questions is None
+
+
+def test_rejects_out_of_domain_question(monkeypatch) -> None:
+    """非制度主题（天气）且检索分偏低 → 按 no_evidence_in_corpus 拒答。"""
+
+    monkeypatch.setattr(service, "retrieve_candidates", lambda _q: [_citation(0.5)])
+
+    result = service.answer_question("明天上海会下雨吗？")
+
+    assert result.refused is True
+    assert result.refuse_reason is RefuseReason.NO_EVIDENCE_IN_CORPUS
+
+
+def test_domain_relevant_question_not_rejected(monkeypatch) -> None:
+    """制度主题（缓考）即使检索分偏低，也不应被领域判定误伤。"""
+
+    monkeypatch.setattr(service, "retrieve_candidates", lambda _q: [_citation(0.5)])
+    monkeypatch.setattr(
+        service,
+        "_generate_answer",
+        lambda _q, _c: GeneratedAnswer("缓考需在规定时间内申请。", [1], 0.5),
+    )
+
+    result = service.answer_question("缓考申请最晚什么时候交？")
+
+    assert result.refused is False
+    assert result.citations
+
+
+def test_out_of_domain_high_score_not_rejected(monkeypatch) -> None:
+    """非制度主题但检索分高于领域阈值时，不触发领域拒答（继续走生成）。"""
+
+    monkeypatch.setattr(service, "retrieve_candidates", lambda _q: [_citation(0.75)])
+    monkeypatch.setattr(
+        service,
+        "_generate_answer",
+        lambda _q, _c: GeneratedAnswer("答案", [1], 0.75),
+    )
+
+    result = service.answer_question("明天上海会下雨吗？")
+
+    assert result.refused is False
+
+
+def test_domain_relevant_avoids_cross_word_match() -> None:
+    """「回复学生」不应误匹配关键词「复学」；独立「复学」应命中。"""
+
+    assert service._is_domain_relevant("学校有没有规定老师必须在 24 小时内回复学生邮件？") is False
+    assert service._is_domain_relevant("退役士兵复学有什么规定？") is True

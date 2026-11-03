@@ -87,3 +87,30 @@ def test_bge_m3_alias_resolves_to_full_name(monkeypatch) -> None:
 
     monkeypatch.setenv("EMBEDDING_MODEL", "bge-m3")
     assert load_settings().embedding_model == "BAAI/bge-m3"
+
+
+def test_retrieval_enable_bm25_default_true(monkeypatch) -> None:
+    """BM25 多路召回默认开启。"""
+
+    from campus_qa.config import load_settings
+
+    monkeypatch.delenv("RETRIEVAL_ENABLE_BM25", raising=False)
+    assert load_settings().retrieval_enable_bm25 is True
+
+
+def test_retrieval_enable_bm25_env_false(monkeypatch) -> None:
+    """RETRIEVAL_ENABLE_BM25=false 时应能关闭多路召回做 A/B 对比。"""
+
+    from campus_qa.config import load_settings
+
+    monkeypatch.setenv("RETRIEVAL_ENABLE_BM25", "false")
+    assert load_settings().retrieval_enable_bm25 is False
+
+
+def test_retrieval_bm25_top_k_env(monkeypatch) -> None:
+    """RETRIEVAL_BM25_TOP_K 应能调整 BM25 路候选数。"""
+
+    from campus_qa.config import load_settings
+
+    monkeypatch.setenv("RETRIEVAL_BM25_TOP_K", "10")
+    assert load_settings().retrieval_bm25_top_k == 10

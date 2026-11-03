@@ -1,30 +1,30 @@
-"""最简检索接口：从问题字符串返回若干候选条款。
+"""检索接口：多路召回（向量 + BM25，RRF 融合）返回候选条款。
 
-首个里程碑要求：在保持
-`retriever.retrieve_candidates(question: str) -> List[Citation]`
-接口不变的前提下，优先使用真实向量索引
-`data/index/embeddings.npy` 做检索，并填好
-`Citation.score` 便于拒答阈值使用；在索引或
-向量模型不可用时，退回内置样本文本的字符级
-Jaccard 检索，占位演示。
+在保持 `retriever.retrieve_candidates(question: str) -> List[Citation]`
+接口不变的前提下：
+
+- 向量路：`data/index/embeddings.npy` + bge 编码，暴力余弦；
+- BM25 路：字符级 2-gram（中文无需分词器，不新增依赖），
+  可通过 `settings.retrieval_enable_bm25` 开关；
+- 两路 RRF 融合排序后，套用 `top_k` 与 `per_doc` 限额；
+- `Citation.score` 保留向量余弦分，拒答阈值闸门语义不变。
+
+索引或向量模型不可用时，退回内置样本文本的字符级
+Jaccard 检索，占位演示；索引加载失败时不抛异常。
 
 接口设计目标：
 - 输入：问题字符串 `question: str`；
 - 输出：若干候选条款 `List[Citation]`，字段与
   `AnswerResult.citations` 完全一致，方便后续直接
-  映射与回填。
-
-实现约束：不引入新的向量库或复杂框架，仅使用
-现有 `embeddings.npy` + `numpy` + `sentence-transformers`
-完成暴力余弦检索。索引加载失败时不抛异常，
-直接回退到样本检索。"""
+  映射与回填。"""
 
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -33,6 +33,11 @@ from .contracts import Citation
 
 
 _PAGE_NUMBER_RE = re.compile(r"\d+")
+
+# BM25 与 RRF 融合参数（字符级 2-gram，中文无需分词器）。
+_BM25_K1 = 1.5
+_BM25_B = 0.75
+_RRF_K = 60.0
 
 
 def _coerce_page(value: object) -> Optional[int]:
@@ -104,6 +109,12 @@ _embedding_model_name: str = ""  # 从 manifest 读取的模型名，优先于 s
 _index_loaded: bool = False
 _embedding_model = None  # 懒加载 SentenceTransformer 模型
 _embedding_failed: bool = False  # 模型加载失败后不再重试
+
+# BM25 字符级 2-gram 倒排索引（随向量索引一同构建）。
+_bm25_postings: Dict[str, List[Tuple[int, int]]] = {}  # term -> [(chunk_idx, tf)]
+_bm25_doc_lengths: List[int] = []  # 每个 chunk 的 2-gram 数量
+_bm25_avg_length: float = 0.0
+_bm25_ready: bool = False
 
 
 def _load_index() -> None:
@@ -186,6 +197,8 @@ def _load_index() -> None:
     _indexed_chunks = indexed_chunks[:chunk_count]
     _embeddings_matrix = _embeddings_matrix[:chunk_count]
 
+    _build_bm25_index()
+
 
 def _encode_question(question: str) -> Optional[np.ndarray]:
     """使用 manifest 指定的向量模型对问题编码，返回向量表示。
@@ -224,13 +237,163 @@ def _encode_question(question: str) -> Optional[np.ndarray]:
     return np.asarray(vector, dtype="float32")
 
 
-def _retrieve_with_embeddings(question: str) -> List[Citation]:
-    """基于真实向量索引的检索实现。
+def _compute_vector_scores(query_vector: np.ndarray) -> Optional[np.ndarray]:
+    """计算问题向量与全部 chunk 的余弦相似度，返回一维分数数组。"""
 
-    - 使用 bge 模型对问题编码；
-    - 计算与所有 chunk 向量的余弦相似度；
-    - 按得分排序，应用 `top_k` 和 `per_doc` 限额；
-    - 返回填好 `score` 的 `Citation` 列表。"""
+    if _embeddings_matrix is None or not _indexed_chunks:
+        return None
+    if query_vector.shape[-1] != _embeddings_matrix.shape[1]:
+        return None
+
+    query_norm = float(np.linalg.norm(query_vector))
+    if query_norm == 0.0:
+        return None
+
+    normalized_query = query_vector / query_norm
+    row_norms = np.linalg.norm(_embeddings_matrix, axis=1)
+    safe_row_norms = np.where(row_norms == 0.0, 1e-8, row_norms)
+    normalized_index = _embeddings_matrix / safe_row_norms[:, None]
+    return normalized_index @ normalized_query
+
+
+def _bigrams(text: str) -> List[str]:
+    """字符级 2-gram 切分：去空白后连续滑窗，中文无需分词器。"""
+
+    cleaned = re.sub(r"\s+", "", text)
+    return [cleaned[i : i + 2] for i in range(len(cleaned) - 1)]
+
+
+def _compute_bm25_scores(
+    query_grams: List[str],
+    postings: Dict[str, List[Tuple[int, int]]],
+    doc_lengths: List[int],
+    avg_length: float,
+    n_docs: int,
+) -> Dict[int, float]:
+    """按 BM25 公式对全部 chunk 打分，返回 {chunk_idx: score}。
+
+    查询侧 2-gram 去重（重复项不重复计入），与常见 BM25 简化一致。
+    """
+
+    scores: Dict[int, float] = {}
+    for gram in set(query_grams):
+        posting = postings.get(gram)
+        if not posting:
+            continue
+        df = len(posting)
+        idf = math.log((n_docs - df + 0.5) / (df + 0.5) + 1)
+        for doc_idx, tf in posting:
+            doc_len = doc_lengths[doc_idx]
+            denominator = tf + _BM25_K1 * (1 - _BM25_B + _BM25_B * doc_len / avg_length)
+            gain = idf * tf * (_BM25_K1 + 1) / denominator
+            scores[doc_idx] = scores.get(doc_idx, 0.0) + gain
+    return scores
+
+
+def _build_bm25_index() -> None:
+    """基于 `_indexed_chunks` 构建字符级 2-gram 倒排索引。
+
+    与向量索引同生命周期，只在 `_load_index` 成功后执行一次；
+    样本回退路径没有语料，因此不构建。
+    """
+
+    global _bm25_postings, _bm25_doc_lengths, _bm25_avg_length, _bm25_ready
+
+    _bm25_postings = {}
+    doc_lengths: List[int] = []
+    for doc_idx, chunk in enumerate(_indexed_chunks):
+        grams = _bigrams(chunk.text)
+        doc_lengths.append(len(grams))
+        tf: Dict[str, int] = {}
+        for gram in grams:
+            tf[gram] = tf.get(gram, 0) + 1
+        for gram, count in tf.items():
+            _bm25_postings.setdefault(gram, []).append((doc_idx, count))
+
+    _bm25_doc_lengths = doc_lengths
+    _bm25_avg_length = (sum(doc_lengths) / len(doc_lengths)) if doc_lengths else 0.0
+    _bm25_ready = True
+
+
+def _bm25_scores_for_question(question: str) -> Dict[int, float]:
+    """对问题做 BM25 打分；索引未就绪或问题无有效 2-gram 时返回空。"""
+
+    if not _bm25_ready:
+        return {}
+    grams = _bigrams(question)
+    if not grams:
+        return {}
+    return _compute_bm25_scores(
+        grams, _bm25_postings, _bm25_doc_lengths, _bm25_avg_length, len(_bm25_doc_lengths)
+    )
+
+
+def _rrf_fuse(
+    vector_scores: np.ndarray,
+    bm25_scores: Dict[int, float],
+    vector_k: int = 5,
+    bm25_k: int = 5,
+    rrf_k: float = _RRF_K,
+) -> List[Tuple[int, float]]:
+    """RRF 融合向量路与 BM25 路，返回 [(chunk_idx, rrf_score)] 按分数降序。"""
+
+    rrf: Dict[int, float] = {}
+    for rank, idx in enumerate(vector_scores.argsort()[::-1][:vector_k]):
+        i = int(idx)
+        rrf[i] = rrf.get(i, 0.0) + 1.0 / (rrf_k + rank + 1)
+    for rank, idx in enumerate(sorted(bm25_scores, key=bm25_scores.get, reverse=True)[:bm25_k]):
+        rrf[idx] = rrf.get(idx, 0.0) + 1.0 / (rrf_k + rank + 1)
+    return sorted(rrf.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def _rank_and_build_citations(
+    ranked_indices: List[int],
+    scores: np.ndarray,
+) -> List[Citation]:
+    """按给定索引顺序组装 Citation，套用 top_k 与 per_doc 限额。
+
+    `scores` 为向量余弦分数组，`Citation.score` 沿用向量分，
+    保证拒答阈值闸门语义不变（融合只改排序与取舍）。
+    """
+
+    top_k = min(settings.retrieval_top_k, len(ranked_indices))
+    if top_k <= 0:
+        return []
+
+    per_doc_limit = max(settings.retrieval_per_doc, 1)
+    citations: List[Citation] = []
+    doc_counts: Dict[str, int] = {}
+
+    for index_position in ranked_indices:
+        if len(citations) >= top_k:
+            break
+        idx = int(index_position)
+        chunk = _indexed_chunks[idx]
+        doc_id = chunk.doc_id
+        if doc_counts.get(doc_id, 0) >= per_doc_limit:
+            continue
+        doc_counts[doc_id] = doc_counts.get(doc_id, 0) + 1
+        citations.append(
+            Citation(
+                document_id=chunk.doc_id,
+                snippet=chunk.text,
+                score=float(scores[idx]),
+                page=chunk.page,
+                section=chunk.section or chunk.title or None,
+                url=chunk.url,
+            )
+        )
+    return citations
+
+
+def _retrieve_with_embeddings(question: str) -> List[Citation]:
+    """基于真实索引的多路检索实现。
+
+    - 向量路：bge 编码 + 暴力余弦；
+    - BM25 路（开关 `settings.retrieval_enable_bm25`）：字符级 2-gram 打分；
+    - 两路 RRF 融合排序后，套用 top_k 与 per_doc 限额；
+    - `Citation.score` 保留向量余弦分，拒答阈值语义不变。
+    """
 
     if _embeddings_matrix is None or not _indexed_chunks:
         return []
@@ -239,55 +402,24 @@ def _retrieve_with_embeddings(question: str) -> List[Citation]:
     if query_vector is None:
         return []
 
-    if query_vector.shape[-1] != _embeddings_matrix.shape[1]:
+    vector_scores = _compute_vector_scores(query_vector)
+    if vector_scores is None:
         return []
 
-    query_norm = float(np.linalg.norm(query_vector))
-    if query_norm == 0.0:
-        return []
-
-    normalized_query = query_vector / query_norm
-    row_norms = np.linalg.norm(_embeddings_matrix, axis=1)
-    safe_row_norms = np.where(row_norms == 0.0, 1e-8, row_norms)
-    normalized_index = _embeddings_matrix / safe_row_norms[:, None]
-
-    scores = normalized_index @ normalized_query
-
-    top_k = min(settings.retrieval_top_k, scores.shape[0])
-    if top_k <= 0:
-        return []
-
-    sorted_indices = scores.argsort()[::-1]
-    per_doc_limit = max(settings.retrieval_per_doc, 1)
-
-    citations: List[Citation] = []
-    doc_counts: dict[str, int] = {}
-
-    for index_position in sorted_indices:
-        if len(citations) >= top_k:
-            break
-
-        chunk = _indexed_chunks[int(index_position)]
-        doc_id = chunk.doc_id
-        current_count = doc_counts.get(doc_id, 0)
-        if current_count >= per_doc_limit:
-            continue
-
-        doc_counts[doc_id] = current_count + 1
-        score = float(scores[int(index_position)])
-
-        citations.append(
-            Citation(
-                document_id=chunk.doc_id,
-                snippet=chunk.text,
-                score=score,
-                page=chunk.page,
-                section=chunk.section or chunk.title or None,
-                url=chunk.url,
+    if settings.retrieval_enable_bm25:
+        bm25_scores = _bm25_scores_for_question(question)
+        if bm25_scores:
+            fused = _rrf_fuse(
+                vector_scores,
+                bm25_scores,
+                vector_k=settings.retrieval_top_k,
+                bm25_k=settings.retrieval_bm25_top_k,
             )
-        )
+            ranked = [idx for idx, _ in fused]
+            return _rank_and_build_citations(ranked, vector_scores)
 
-    return citations
+    ranked = [int(i) for i in vector_scores.argsort()[::-1]]
+    return _rank_and_build_citations(ranked, vector_scores)
 
 
 def _simple_overlap_score(question: str, text: str) -> float:

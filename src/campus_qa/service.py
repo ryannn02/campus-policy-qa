@@ -125,6 +125,41 @@ def _is_ambiguous(question: str) -> bool:
     return True
 
 
+# 校园制度主题关键词：用于「领域相关性」前置判定。
+# 问题不含任何关键词 → 视为非制度主题（生活/常识/校外信息类），
+# 配合检索 top-1 分数做拒答，避免误答「天气」「餐厅」等无依据问题。
+_DOMAIN_KEYWORDS = (
+    "缓考", "休学", "复学", "转专业", "转学", "退学", "毕业", "结业", "学位", "学籍", "注册",
+    "选课", "学分", "重修", "补考", "考试", "考核", "作弊", "违纪", "处分", "申诉", "旷课", "缺课", "缺席",
+    "奖学金", "助学金", "资助", "勤工助学", "困难", "补助", "减免", "励志",
+    "借阅", "借书", "图书馆", "逾期", "书刊",
+    "宿舍", "公寓", "寝室", "住宿", "床位", "消防", "大功率",
+    "电动车", "停车", "门禁", "出入", "治安", "交通", "校门", "机动车", "车辆", "限速",
+    "留学生", "交换", "交流", "海外", "港澳台",
+    "创新创业", "竞赛", "科创", "免修",
+    "体育", "医保", "医疗", "就医", "报销", "答辩", "论文", "毕业设计", "实验室", "科研", "失信",
+    "请假", "考勤", "入学", "报到", "新生", "军训", "兼职", "学费", "权利", "义务", "表彰", "奖励", "诚信",
+    "辅修", "修读", "校园卡", "公共场所", "大型活动",
+)
+
+
+def _is_domain_relevant(question: str) -> bool:
+    """判断问题是否落在校园制度主题内（是否含任一制度关键词）。
+
+    对「复学」做前缀检查，排除「回复学生」这类跨界误匹配。
+    """
+
+    for kw in _DOMAIN_KEYWORDS:
+        if kw not in question:
+            continue
+        if kw == "复学":
+            idx = question.find(kw)
+            if idx > 0 and question[idx - 1] == "回":
+                continue
+        return True
+    return False
+
+
 def _build_answer_from_citations(question: str, citations: List[Citation]) -> str:
     """生成摘录式兜底回答。
 
@@ -249,6 +284,17 @@ def answer_question(question: str) -> AnswerResult:
             question=question,
             refused=True,
             refuse_reason=RefuseReason.RETRIEVAL_LOW_SCORE,
+            top_retrieval_score=top_score,
+            suggested_contact=_SUGGESTED_CONTACT,
+        )
+
+    # 领域相关性：非制度主题（不含任何制度关键词）且检索分偏低 → 拒答。
+    # 避免「天气」「餐厅」等生活/常识类问题因检索到相近条款而被误答。
+    if not _is_domain_relevant(question) and top_score < settings.domain_score_threshold:
+        return AnswerResult(
+            question=question,
+            refused=True,
+            refuse_reason=RefuseReason.NO_EVIDENCE_IN_CORPUS,
             top_retrieval_score=top_score,
             suggested_contact=_SUGGESTED_CONTACT,
         )

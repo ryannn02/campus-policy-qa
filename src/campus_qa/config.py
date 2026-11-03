@@ -82,6 +82,15 @@ def _resolve_embedding_model() -> str:
     return _EMBEDDING_MODEL_ALIASES.get(raw, raw)
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    """解析布尔型环境变量，兼容 1/0、true/false、yes/no、on/off。"""
+
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     """项目运行所需的基础配置。
@@ -95,9 +104,15 @@ class Settings:
     llm_base_url: Optional[str] = None
 
     # 检索相关参数
+    # per_doc=3 / bm25_top_k=10 为多路召回实验最优配置：
+    # Recall@5 0.733→0.802、grounded_rate 0.724→0.784（评测对比见 .evallogs/）。
     retrieval_top_k: int = 5
-    retrieval_per_doc: int = 2
+    retrieval_per_doc: int = 3
     retrieval_score_threshold: float = 0.35
+    retrieval_enable_bm25: bool = True
+    retrieval_bm25_top_k: int = 10
+    # 领域相关性判定阈值：非制度主题且 top-1 低于该值则拒答（no_evidence_in_corpus）。
+    domain_score_threshold: float = 0.68
 
     # 数据路径约定
     data_dir: Path = DATA_DIR
@@ -115,6 +130,8 @@ def load_settings() -> Settings:
     - RETRIEVAL_TOP_K
     - RETRIEVAL_PER_DOC
     - RETRIEVAL_SCORE_THRESHOLD
+    - RETRIEVAL_ENABLE_BM25（可选，多路召回开关，默认 true）
+    - RETRIEVAL_BM25_TOP_K（可选，BM25 路候选数，默认 10）
     - RETRIEVAL_INDEX_DIR（可选，向量索引目录，默认 data/index）
     """
 
@@ -128,8 +145,11 @@ def load_settings() -> Settings:
         embedding_model=_resolve_embedding_model(),
         llm_base_url=base_url or None,
         retrieval_top_k=int(os.getenv("RETRIEVAL_TOP_K", "5")),
-        retrieval_per_doc=int(os.getenv("RETRIEVAL_PER_DOC", "2")),
+        retrieval_per_doc=int(os.getenv("RETRIEVAL_PER_DOC", "3")),
         retrieval_score_threshold=float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.35")),
+        retrieval_enable_bm25=_env_bool("RETRIEVAL_ENABLE_BM25", default=True),
+        retrieval_bm25_top_k=int(os.getenv("RETRIEVAL_BM25_TOP_K", "10")),
+        domain_score_threshold=float(os.getenv("DOMAIN_SCORE_THRESHOLD", "0.68")),
         index_dir=index_dir,
     )
 

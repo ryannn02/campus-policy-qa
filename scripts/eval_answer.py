@@ -89,8 +89,10 @@ def _compute_metrics(cases: List[Tuple[dict, AnswerResult]]) -> dict:
     refused_and_expected = 0
     refuse_failure = 0
 
-    # Recall@5 与有据可依率的分子分母（仅统计有 gold 标注的题）。
+    # Recall@5 与有据可依率的分子分母（仅统计「可回答题」的 gold 命中）。
+    # gold_coverage 则统计所有有 gold 字段的题（含不可回答题的干扰 gold 标注）。
     gold_annotated = 0
+    recall_eligible = 0
     recall_hits = 0
     grounded_hits = 0
     grounded_answered = 0
@@ -105,15 +107,18 @@ def _compute_metrics(cases: List[Tuple[dict, AnswerResult]]) -> dict:
         gold = item.get("gold") or []
         if gold:
             gold_annotated += 1
-            # Recall@5：单独取检索 top-k 候选，判断是否命中黄金来源。
-            candidates = retrieve_candidates(str(item.get("question", "")))
-            if _hit_gold(gold, candidates[:5]):
-                recall_hits += 1
-            # 有据可依率：作答且引用命中黄金来源。
-            if not result.refused:
-                grounded_answered += 1
-                if _hit_gold(gold, result.citations):
-                    grounded_hits += 1
+            # 仅可回答题的 gold 参与 Recall@5 / 有据可依率；
+            # 不可回答题的 gold 是「干扰条款」，只用于标注覆盖率与检索侧分析，
+            # 不纳入这两个指标，避免口径污染。
+            if expect_answer:
+                recall_eligible += 1
+                candidates = retrieve_candidates(str(item.get("question", "")))
+                if _hit_gold(gold, candidates[:5]):
+                    recall_hits += 1
+                if not result.refused:
+                    grounded_answered += 1
+                    if _hit_gold(gold, result.citations):
+                        grounded_hits += 1
 
         if expect_answer:
             should_answer_total += 1
@@ -138,7 +143,7 @@ def _compute_metrics(cases: List[Tuple[dict, AnswerResult]]) -> dict:
         "answer_rate": _rate(answered_and_expected, should_answer_total),
         "refusal_rate": _rate(refused_and_expected, should_refuse_total),
         "refuse_failure_rate": _rate(refuse_failure, total),
-        "recall_at_5": _rate(recall_hits, gold_annotated),
+        "recall_at_5": _rate(recall_hits, recall_eligible),
         "grounded_rate": _rate(grounded_hits, grounded_answered),
         "per_category": per_category,
         "counts": {
@@ -147,6 +152,7 @@ def _compute_metrics(cases: List[Tuple[dict, AnswerResult]]) -> dict:
             "answered_and_expected": answered_and_expected,
             "refused_and_expected": refused_and_expected,
             "refuse_failure": refuse_failure,
+            "recall_eligible": recall_eligible,
         },
     }
 
@@ -210,6 +216,8 @@ def _render_markdown(metrics: dict, mismatches: List[Tuple[dict, AnswerResult]])
         "",
         f"- should_answer：{counts['should_answer']} 条；should_refuse：{counts['should_refuse']} 条；",
         f"- 作答正确：{counts['answered_and_expected']}；拒答正确：{counts['refused_and_expected']}；拒答失败：{counts['refuse_failure']}。",
+        f"- Recall@5 与有据可依率仅统计可回答题中带 gold 的题（分母 {counts['recall_eligible']} 条）；"
+        f"不可回答题的干扰 gold 不参与。",
         "",
     ]
 
