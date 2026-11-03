@@ -15,6 +15,12 @@
 | 5 | 大模型动态生成追问建议 | B + C + D | P2 | 见下文契约草案 |
 | 6 | 打 M1 里程碑 git commit | 组长 + E | P0 | 工作区成果入库 |
 
+> **完成状态（M2 已验收，2026-11）**：
+> 1 ✅ 拒答收紧（refuse_failure 0.111 → 0.019）；2 ✅ 评测集 162 条、gold 100%；
+> 3 ✅ OCR 2 份 + 21 个遗留文件移出 `data/removed/`；4 ✅ `citation_index` + 前端锚点渲染；
+> 5 ✅ `follow_up_questions` 全链路（契约/生成链/前端 fallback）；6 ✅ 提交 `a2485a7`。
+> 当前状态以 `docs/architecture.md` 第八节为准。
+
 ## 二、任务 5：动态追问契约草案
 
 > 现状：前端用关键词映射生成「你可能还想问」（`scripts/serve.py` 的 `FOLLOWUPS`）。

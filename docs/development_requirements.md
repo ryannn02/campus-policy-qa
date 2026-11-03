@@ -108,25 +108,31 @@
 
 ## 三、开发里程碑与优先级
 
-- 里程碑 M1：最小端到端原型
-  - 完成 `config.py` 与 `contracts.py` 的基础实现（已完成初版）；
+> 状态标注：✅ 已验收；🔜 进行中。与 `docs/architecture.md` 第八节同步维护。
+
+- 里程碑 M1：最小端到端原型 ✅（已验收）
+  - 完成 `config.py` 与 `contracts.py` 的基础实现；
   - 在 `retriever.py`、`chain.py`、`service.py` 中实现一条最小可用的问答链；
   - 实现 `scripts.ask`，从命令行输入问题并获得带引用或拒答的 `AnswerResult`。
 
-- 里程碑 M2：数据与索引流水线
-  - 完成制度文档解析（至少覆盖部分代表性文档）；
-  - 构建 `data/chunks.jsonl` 与 `data/index/`；
-  - 对检索效果进行初步人工评估，修正切分策略与向量化参数。
+- 里程碑 M2：数据与索引流水线 ✅（已验收）
+  - 完成制度文档解析（`scripts/ingest.py`：PDF/Word/HTML + RapidOCR 扫描件回退）；
+  - 构建 `data/chunks.jsonl`（4277 块 / 265 份文档）与 `data/index/`；
+  - 拒答收紧 + 评测集扩至 162 条 + 动态追问 + 可点击引用锚点（见 `docs/m2_plan.md`）。
 
-- 里程碑 M3：Web/API 与评测体系
-  - 完成基础 Web 界面和 JSON API；
-  - 构建 ≥150 条评测集，并实现 `scripts.eval_answer`；
-  - 生成首版评测报告，包含基础档指标（Recall@5、有据可依率、拒答率、幻觉率）。
+- 里程碑 M3：Web/API 与评测体系 ✅（已验收，4/5 指标达标）
+  - 完成基础 Web 界面和 JSON API（居中布局、示例问题、追问建议、引用锚点）；
+  - 构建 162 条评测集（gold 标注 100%），实现 `scripts.eval_answer`（报告含逐条结果明细）；
+  - 评测指标：Recall@5 0.802 ✅ / refusal_rate 0.935 ✅ / refuse_failure_rate 0.019 ✅ /
+    answer_rate 1.000 ✅；grounded_rate 0.776 距 0.80 差 0.024（如实记录，转 M4）。
 
-- 里程碑 M4：优化与进阶功能
-  - 根据评测结果调整检索与拒答阈值；
-  - 有精力时引入 BM25 + 多路召回 + 重排；
-  - 尝试查询改写与意图澄清，补充 badcase 归因与改进记录。
+- 里程碑 M4：优化与进阶功能 🔜（进行中）
+  - ✅ BM25 + 多路召回 + RRF 重排（已在 M3 提前完成，Recall@5 0.733 → 0.802）；
+  - ✅ 拒答阈值调优（领域相关性前置判定，refuse_failure 0.111 → 0.019）；
+  - 提示词强化引用精确性（grounded_rate 冲刺 0.80）；
+  - 运行时版本时效过滤（同主题多版本去重）；
+  - 查询改写与意图澄清（歧义检测已上线，主动追问待做）；
+  - badcase 归因与改进记录（`eval/badcase.md` 持续维护）。
 
 ## 四、编码约束与开发原则
 
