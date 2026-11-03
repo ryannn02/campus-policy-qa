@@ -10,9 +10,10 @@
 
 .. code-block:: bash
 
-    python -m scripts.build_index                 # 使用默认模型
-    python -m scripts.build_index --model NAME    # 自选 embedding 模型
-    python -m scripts.build_index --batch-size 64 # 调整批大小
+    python -m scripts.build_index                    # 使用默认模型，输出到 data/index
+    python -m scripts.build_index --model NAME       # 自选 embedding 模型
+    python -m scripts.build_index --output-dir DIR   # 指定输出目录（如 data/index_bgem3）
+    python -m scripts.build_index --batch-size 64    # 调整批大小
 """
 
 from __future__ import annotations
@@ -82,21 +83,26 @@ def _encode_texts(model: Any, texts: List[str], batch_size: int) -> np.ndarray:
     ).astype("float32")
 
 
-def build_index(model_name: str | None = None, batch_size: int = 64) -> tuple[int, int]:
-    """构建向量索引并写入 ``data/index`` 目录。
+def build_index(
+    model_name: str | None = None,
+    batch_size: int = 64,
+    output_dir: str | Path | None = None,
+) -> tuple[int, int]:
+    """构建向量索引并写入指定目录。
 
     - 输入：``settings.chunks_path`` 指向的 chunks.jsonl；
-    - 输出：``settings.index_dir`` 下的 ``embeddings.npy`` 和 ``manifest.json``。
+    - 输出：``output_dir``（默认 ``settings.index_dir``）下的
+      ``embeddings.npy`` 和 ``manifest.json``。
     """
 
     chunks_path = settings.chunks_path
-    index_dir = settings.index_dir
+    index_dir = Path(output_dir) if output_dir else settings.index_dir
 
     chunks = _load_chunks(chunks_path)
     texts = [_chunk_text(c) for c in chunks]
 
     model = _load_model(model_name)
-    vecs = _encode_texts(model, texts, batch_size=batch_size)
+    vecs = _encode_texts(model, texts, batch_size)
 
     index_dir.mkdir(parents=True, exist_ok=True)
     emb_path = index_dir / "embeddings.npy"
@@ -122,14 +128,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="构建本地向量索引")
     parser.add_argument("--model", default=None, help="embedding 模型名称")
     parser.add_argument("--batch-size", type=int, default=64, help="编码批大小")
+    parser.add_argument("--output-dir", default=None, help="索引输出目录（默认 data/index）")
     args = parser.parse_args()
 
-    shape = build_index(model_name=args.model, batch_size=args.batch_size)
-    print(f"索引完成：{shape[0]} 条 × {shape[1]} 维")
-    print("模型与语料指纹记录在 data/index/manifest.json，重建索引请再次运行该脚本。")
+    shape = build_index(model_name=args.model, batch_size=args.batch_size, output_dir=args.output_dir)
+    out = args.output_dir or str(settings.index_dir)
+    print(f"索引完成：{shape[0]} 条 × {shape[1]} 维 → {out}")
+    print("模型与语料指纹记录在 manifest.json，重建索引请再次运行该脚本。")
 
 
 if __name__ == "__main__":  # pragma: no cover
     main()
-
-

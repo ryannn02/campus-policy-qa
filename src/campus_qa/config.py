@@ -31,6 +31,7 @@ _EMBEDDING_MODEL_ALIASES = {
     "bge-small-zh-v1.5": "BAAI/bge-small-zh-v1.5",
     "bge-base-zh-v1.5": "BAAI/bge-base-zh-v1.5",
     "bge-large-zh-v1.5": "BAAI/bge-large-zh-v1.5",
+    "bge-m3": "BAAI/bge-m3",
 }
 
 
@@ -114,9 +115,12 @@ def load_settings() -> Settings:
     - RETRIEVAL_TOP_K
     - RETRIEVAL_PER_DOC
     - RETRIEVAL_SCORE_THRESHOLD
+    - RETRIEVAL_INDEX_DIR（可选，向量索引目录，默认 data/index）
     """
 
     api_key, base_url, chat_model = _resolve_llm()
+
+    index_dir = Path(os.getenv("RETRIEVAL_INDEX_DIR", str(DATA_DIR / "index")))
 
     return Settings(
         llm_api_key=api_key,
@@ -126,6 +130,7 @@ def load_settings() -> Settings:
         retrieval_top_k=int(os.getenv("RETRIEVAL_TOP_K", "5")),
         retrieval_per_doc=int(os.getenv("RETRIEVAL_PER_DOC", "2")),
         retrieval_score_threshold=float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.35")),
+        index_dir=index_dir,
     )
 
 

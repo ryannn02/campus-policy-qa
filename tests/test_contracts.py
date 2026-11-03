@@ -60,3 +60,30 @@ def test_embedding_model_name_is_fully_qualified() -> None:
     """短名会在配置层补全，避免 SentenceTransformer 找不到模型。"""
 
     assert "/" in settings.embedding_model
+
+
+def test_index_dir_configurable_via_env(monkeypatch) -> None:
+    """RETRIEVAL_INDEX_DIR 环境变量应能切换向量索引目录。"""
+
+    from campus_qa.config import load_settings
+
+    monkeypatch.setenv("RETRIEVAL_INDEX_DIR", "/tmp/test_index")
+    assert load_settings().index_dir == Path("/tmp/test_index")
+
+
+def test_index_dir_defaults_to_data_index(monkeypatch) -> None:
+    """未设置 RETRIEVAL_INDEX_DIR 时默认 data/index，保持既有行为。"""
+
+    from campus_qa.config import load_settings
+
+    monkeypatch.delenv("RETRIEVAL_INDEX_DIR", raising=False)
+    assert load_settings().index_dir == ROOT_DIR / "data" / "index"
+
+
+def test_bge_m3_alias_resolves_to_full_name(monkeypatch) -> None:
+    """短名 bge-m3 应补全为 BAAI/bge-m3。"""
+
+    from campus_qa.config import load_settings
+
+    monkeypatch.setenv("EMBEDDING_MODEL", "bge-m3")
+    assert load_settings().embedding_model == "BAAI/bge-m3"

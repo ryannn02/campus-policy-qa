@@ -87,7 +87,7 @@ def join_short_lines(text, thresh=25):
             out.append(line)
     return "\n".join(out)
 
-
+#去噪声（ICP 备案、版权、浏览次数、页码 - 12 - 等）、去重行、合并 HTML 拆碎的短行。
 def clean_text(text):
     lines = []
     for raw in (text or "").replace("\r", "\n").split("\n"):
@@ -292,7 +292,7 @@ PARSERS = {
     "html": parse_html, "htm": parse_html, "txt": parse_txt,
 }
 
-
+#优先按「章/节/条」标题切，保留 section（章节层级）与 page（PDF 页码）。
 def split_chunks(text, pages):
     """按条款切分；没有条款编号的按段落聚合。返回 [(section, page, text)]"""
     lines = [l for l in text.split("\n")]
@@ -333,7 +333,7 @@ def split_chunks(text, pages):
             out.append((sec, page, piece))
     return out
 
-
+#超长块按句号拆开再贪心聚合，上限 800 字/块
 def hard_split(body):
     """超长块切分：先按句号拆开长段落，再贪心聚合回上限长度。"""
     pieces = []
@@ -372,7 +372,7 @@ def hard_split(body):
             final.append(piece)
     return final
 
-
+#<50 字的碎片并入上一块。
 def merge_small(chunks):
     """碎片（页眉页脚、表格残渣）并进上一块；并不动又太短的丢掉。"""
     out = []

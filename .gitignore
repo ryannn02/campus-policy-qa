@@ -12,6 +12,10 @@ data/index/
 data/removed/
 data/*.log
 reports/
+.evallogs/
+
+# 非本项目产出（简历等个人文件，保留在工作区但不入库）
+output/
 
 # 本地依赖缓存与临时目录
 .uv-cache/

@@ -100,6 +100,7 @@ _SAMPLE_CLAUSES: List[Citation] = [
 _embeddings_matrix: Optional[np.ndarray] = None
 _indexed_chunks: List[_IndexedChunk] = []
 _query_prefix: str = ""
+_embedding_model_name: str = ""  # 从 manifest 读取的模型名，优先于 settings.embedding_model
 _index_loaded: bool = False
 _embedding_model = None  # 懒加载 SentenceTransformer 模型
 _embedding_failed: bool = False  # 模型加载失败后不再重试
@@ -115,7 +116,7 @@ def _load_index() -> None:
     加载失败时保持索引为空，让检索逻辑自动回退
     到 `_SAMPLE_CLAUSES` 的字符级检索。"""
 
-    global _embeddings_matrix, _indexed_chunks, _query_prefix, _index_loaded
+    global _embeddings_matrix, _indexed_chunks, _query_prefix, _embedding_model_name, _index_loaded
 
     if _index_loaded:
         return
@@ -141,6 +142,7 @@ def _load_index() -> None:
 
     _embeddings_matrix = embeddings
     _query_prefix = str(manifest.get("query_prefix", ""))
+    _embedding_model_name = str(manifest.get("model", "")).strip()
 
     chunks_file_relative = manifest.get("chunks_file")
     if isinstance(chunks_file_relative, str) and chunks_file_relative:
@@ -186,9 +188,10 @@ def _load_index() -> None:
 
 
 def _encode_question(question: str) -> Optional[np.ndarray]:
-    """使用 bge-small-zh-v1.5 对问题编码，返回向量表示。
+    """使用 manifest 指定的向量模型对问题编码，返回向量表示。
 
-    为与索引构建保持一致，前置 `manifest.query_prefix`。
+    模型名优先取 ``manifest.model``（与索引构建时一致），
+    缺省回退 ``settings.embedding_model``；前置 ``manifest.query_prefix``。
     当模型或索引不可用、或问题为空时返回 None。"""
 
     global _embedding_model, _embedding_failed
@@ -201,10 +204,11 @@ def _encode_question(question: str) -> Optional[np.ndarray]:
         return None
 
     if _embedding_model is None:
+        model_name = _embedding_model_name or settings.embedding_model
         try:
             from sentence_transformers import SentenceTransformer
 
-            _embedding_model = SentenceTransformer(settings.embedding_model)
+            _embedding_model = SentenceTransformer(model_name)
         except Exception:
             # 模型不可用（未下载、名称写错、无网络）时只尝试一次，
             # 之后统一走样本检索，避免每个问题都卡在加载上。
