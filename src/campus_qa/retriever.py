@@ -20,6 +20,7 @@ Jaccard 检索，占位演示；索引加载失败时不抛异常。
 
 from __future__ import annotations
 
+import difflib
 import json
 import math
 import re
@@ -38,6 +39,11 @@ _PAGE_NUMBER_RE = re.compile(r"\d+")
 _BM25_K1 = 1.5
 _BM25_B = 0.75
 _RRF_K = 60.0
+
+# 跨文档同主题去重：字符重合率 ≥ 该值视为同一主题多版本。
+_DEDUP_RATIO_THRESHOLD = 0.85
+# SequenceMatcher.ratio ≥ 0.85 的必要条件：max/min 长度比 ≤ 2/0.85 - 1 ≈ 1.353。
+_DEDUP_LEN_RATIO_UPPER = 2.0 / _DEDUP_RATIO_THRESHOLD - 1.0
 
 
 def _coerce_page(value: object) -> Optional[int]:
@@ -346,6 +352,47 @@ def _rrf_fuse(
     return sorted(rrf.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
+def _dedup_cross_doc(
+    ranked_indices: List[int],
+    threshold: float = _DEDUP_RATIO_THRESHOLD,
+) -> List[int]:
+    """跨文档同主题去重（融合排序之后、per_doc/top_k 限额之前）。
+
+    按给定顺序遍历（分数已降序），若当前候选与已保留的某条候选
+    ``document_id`` 不同、且文本字符重合率（``difflib.SequenceMatcher.ratio``）
+    ≥ ``threshold``，视为同一主题的多版本，跳过；否则保留。
+    先到先得 ⇒ 保留分数更高的代表。
+
+    同一文档内的候选不参与去重（多跳题需要同文档多处条款）。
+    长度比过大的候选对 ratio 必低于阈值，直接跳过精确计算。
+    """
+
+    if not ranked_indices:
+        return []
+
+    kept: List[int] = []
+    kept_meta: List[Tuple[str, str]] = []  # 已保留代表的 (doc_id, text)
+
+    for idx in ranked_indices:
+        chunk = _indexed_chunks[int(idx)]
+        duplicated = False
+        for kept_doc_id, kept_text in kept_meta:
+            if kept_doc_id == chunk.doc_id:
+                continue
+            len_ratio = len(kept_text) / max(len(chunk.text), 1)
+            if len_ratio > _DEDUP_LEN_RATIO_UPPER or len_ratio < (1.0 / _DEDUP_LEN_RATIO_UPPER):
+                continue
+            if difflib.SequenceMatcher(None, kept_text, chunk.text).ratio() >= threshold:
+                duplicated = True
+                break
+        if duplicated:
+            continue
+        kept.append(idx)
+        kept_meta.append((chunk.doc_id, chunk.text))
+
+    return kept
+
+
 def _rank_and_build_citations(
     ranked_indices: List[int],
     scores: np.ndarray,
@@ -391,7 +438,7 @@ def _retrieve_with_embeddings(question: str) -> List[Citation]:
 
     - 向量路：bge 编码 + 暴力余弦；
     - BM25 路（开关 `settings.retrieval_enable_bm25`）：字符级 2-gram 打分；
-    - 两路 RRF 融合排序后，套用 top_k 与 per_doc 限额；
+    - 两路 RRF 融合排序 → 跨文档同主题去重 → per_doc → top_k；
     - `Citation.score` 保留向量余弦分，拒答阈值语义不变。
     """
 
@@ -416,9 +463,15 @@ def _retrieve_with_embeddings(question: str) -> List[Citation]:
                 bm25_k=settings.retrieval_bm25_top_k,
             )
             ranked = [idx for idx, _ in fused]
-            return _rank_and_build_citations(ranked, vector_scores)
+        else:
+            ranked = [int(i) for i in vector_scores.argsort()[::-1]]
+    else:
+        ranked = [int(i) for i in vector_scores.argsort()[::-1]]
 
-    ranked = [int(i) for i in vector_scores.argsort()[::-1]]
+    # 候选窗口：去重后需仍能凑满 top_k（含 per_doc），
+    # 取 top_k + bm25_top_k + 缓冲；只对窗口内候选做两两比较。
+    window = settings.retrieval_top_k + settings.retrieval_bm25_top_k + 5
+    ranked = _dedup_cross_doc(ranked[:window])
     return _rank_and_build_citations(ranked, vector_scores)
 
 

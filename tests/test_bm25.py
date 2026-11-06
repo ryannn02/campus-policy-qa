@@ -126,3 +126,69 @@ def test_rank_and_build_applies_per_doc_limit(monkeypatch) -> None:
     monkeypatch.setattr(retriever, "settings", strict_settings)
     cites = retriever._rank_and_build_citations(ranked, scores)
     assert [c.document_id for c in cites] == ["a", "b"]
+
+
+def _mk_chunk(doc_id: str, text: str) -> retriever._IndexedChunk:
+    return retriever._IndexedChunk(doc_id=doc_id, text=text, page=None, section=None, url=None)
+
+
+def test_dedup_cross_doc_removes_near_duplicates(monkeypatch) -> None:
+    """跨文档且文本高度重合（≥0.85）的候选只保留先到（分数更高）的代表。"""
+
+    chunks = [
+        _mk_chunk("A", "第三十九条 转专业条件：学生确有专长可以申请转专业。"),
+        _mk_chunk("B", "第三十九条 转专业条件：学生确有专长可以申请转专业。"),
+        _mk_chunk("C", "图书馆借阅规则：每人可借三十册图书。"),
+    ]
+    monkeypatch.setattr(retriever, "_indexed_chunks", chunks)
+    kept = retriever._dedup_cross_doc([0, 1, 2])
+    assert kept == [0, 2]
+
+
+def test_dedup_keeps_same_doc_chunks(monkeypatch) -> None:
+    """同一文档内的条款不去重（多跳题需要同文档多处条款）。"""
+
+    chunks = [
+        _mk_chunk("A", "第一条 甲事项。"),
+        _mk_chunk("A", "第一条 甲事项。"),
+    ]
+    monkeypatch.setattr(retriever, "_indexed_chunks", chunks)
+    kept = retriever._dedup_cross_doc([0, 1])
+    assert kept == [0, 1]
+
+
+def test_dedup_keeps_distinct_topics(monkeypatch) -> None:
+    """主题不同（重合率低）的候选全部保留。"""
+
+    chunks = [
+        _mk_chunk("A", "缓考申请须在考试前提交申请表。"),
+        _mk_chunk("B", "国家助学金面向家庭经济困难学生。"),
+        _mk_chunk("C", "图书馆每人可借三十册图书。"),
+    ]
+    monkeypatch.setattr(retriever, "_indexed_chunks", chunks)
+    kept = retriever._dedup_cross_doc([0, 1, 2])
+    assert kept == [0, 1, 2]
+
+
+def test_dedup_partial_overlap_below_threshold_kept(monkeypatch) -> None:
+    """部分相似但重合率 <0.85 的候选不去（不同版本但信息不同）。"""
+
+    chunks = [
+        _mk_chunk("A", "缓考申请须在考试前提交。"),
+        _mk_chunk("B", "缓考申请须在考试后三个工作日内补交证明材料。"),
+    ]
+    monkeypatch.setattr(retriever, "_indexed_chunks", chunks)
+    kept = retriever._dedup_cross_doc([0, 1])
+    assert kept == [0, 1]
+
+
+def test_dedup_preserves_order_and_handles_empty(monkeypatch) -> None:
+    """先到先得（分数降序），空输入返回空列表。"""
+
+    chunks = [
+        _mk_chunk("A", "相同内容条款。"),
+        _mk_chunk("B", "相同内容条款。"),
+    ]
+    monkeypatch.setattr(retriever, "_indexed_chunks", chunks)
+    assert retriever._dedup_cross_doc([]) == []
+    assert retriever._dedup_cross_doc([1, 0]) == [1]
