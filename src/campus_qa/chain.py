@@ -32,8 +32,9 @@ from .contracts import Citation
 PROMPT_DIR = Path(__file__).resolve().parents[2] / "prompts" / "answer"
 # 提示词按版本演进：优先最新版本，vN 缺失或损坏时回退上一版本。
 # v1 永不删，作为基线；v2 提升回答的自然与亲和度；v3 增加建议追问与正文锚点；
-# v4 强化引用精准挑选与制度库外内容置空。
+# v4 强化引用精准挑选与制度库外内容置空；v5 恢复多引用（v4 规则 6 过保守致 grounded 下降）。
 _PROMPT_FILES = [
+    PROMPT_DIR / "v5.md",
     PROMPT_DIR / "v4.md",
     PROMPT_DIR / "v3.md",
     PROMPT_DIR / "v2.md",

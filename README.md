@@ -2,7 +2,7 @@
 
 上海第二工业大学校园制度问答助手：基于 LangChain + RAG，为师生提供有出处的制度条款回答。
 
-**当前状态**：M3 收尾。CLI / Web API / 评测脚本均可运行：bge 向量 + BM25 多路召回（RRF 融合）→ 阈值闸门 → LLM 生成 → 引用回填 → `AnswerResult`。评测集 162 条（四类齐全，gold 标注 100%），领域相关性前置判定 + 拒答收紧后 `refuse_failure_rate` 0.019（达标 ≤0.15）、`refusal_rate` 0.935、`answer_rate` 1.000、`Recall@5` 0.802（达标 ≥0.75）；`grounded_rate` 0.776 距基础档目标 0.80 差 0.024（见 `eval/report.md` 与 `eval/badcase.md`）。
+**当前状态**：M3 已闭环（五项基础档指标全达标）。CLI / Web API / 评测脚本均可运行：bge 向量 + BM25 多路召回（RRF 融合 + 跨文档同主题去重）→ 阈值闸门 → LLM 生成（v5 提示词）→ 引用回填 → `AnswerResult`。评测集 162 条（四类齐全，gold 多版本标注 100%）：`answer_rate` 1.000、`refusal_rate` 1.000、`refuse_failure_rate` 0.000、`Recall@5` 0.819、`grounded_rate` 0.810，全部达标（见 `eval/report.md`）。
 
 首个里程碑：从 CLI 输入一个中文问题，到输出一条结构化的 `AnswerResult`，端到端跑通；首轮只追求"能跑 + 能演示"，检索/生成指标与进阶优化放到第二阶段。
 

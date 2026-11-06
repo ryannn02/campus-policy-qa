@@ -23,7 +23,7 @@ def _citation(doc_id: str, score: float) -> Citation:
 
 
 def test_load_prompt_reads_latest_versioned() -> None:
-    """提示词应从 prompts/answer 最新版本（v4）读取，且含运行时变量与建议追问。"""
+    """提示词应从 prompts/answer 最新版本（v5）读取，且含运行时变量与建议追问。"""
 
     system, human = _load_prompt()
     assert system
@@ -31,8 +31,8 @@ def test_load_prompt_reads_latest_versioned() -> None:
     assert "{question}" in human
     assert "{context}" in human
     assert "follow_up_questions" in human
-    # v4 新增两条硬规则：引用挑最贴近问题的一版 + 制度库外内容置空。
-    assert "最贴近问题" in human
+    # v5 特征：恢复多引用（宁多勿漏）+ 保留制度库外内容置空。
+    assert "宁多勿漏" in human
     assert "无法支撑" in human
 
 

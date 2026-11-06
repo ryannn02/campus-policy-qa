@@ -143,22 +143,22 @@ scripts/eval_answer.py（批量评测）                          ├─ GET  / 
 ## 七、评测现状
 
 `python -m scripts.eval_answer` 跑 `eval/questions.jsonl`（162 题，四类：answerable 101 /
-unanswerable 36 / multi-hop 15 / ambiguous 10，gold 覆盖 100%），指标写入 `eval/report.md`：
+unanswerable 36 / multi-hop 15 / ambiguous 10，gold 多版本标注覆盖 100%），指标写入 `eval/report.md`：
 
 | 指标 | 当前 | 目标 | 状态 |
 | --- | --- | --- | --- |
 | `answer_rate` | 1.000 | — | — |
-| `refusal_rate` | 0.935 | ≥0.50 | ✅ |
-| `refuse_failure_rate` | 0.019 | ≤0.15 | ✅ |
-| `grounded_rate` | 0.776 | ≥0.80 | ❌ 差 0.024 |
-| `recall_at_5` | 0.802 | ≥0.75 | ✅ |
+| `refusal_rate` | 1.000 | ≥0.50 | ✅ |
+| `refuse_failure_rate` | 0.000 | ≤0.15 | ✅ |
+| `grounded_rate` | 0.810 | ≥0.80 | ✅ |
+| `recall_at_5` | 0.819 | ≥0.75 | ✅ |
 
 口径说明：
 
 - `recall_at_5` / `grounded_rate` 只在「可回答题且带 gold」的题上计算（分母 116 条）；`refuse_failure_rate` 以全量为分母。
-- `grounded_rate` 采用 **snippet 精确匹配**（答案引用的 chunk 全文须与 gold 标注 snippet 逐字一致），属较严口径。实测 `Recall@5` 0.802 已达标，但模型从 top-5 候选挑选引用时偶未选中 gold 标注的那个 chunk（选中同文档相邻条款），导致 `grounded_rate` 0.776 距 0.80 差 0.024（约 3 条题）。
-- 该差距为 **M3 如实记录、接受现状项**，优化转入 M4（提示词强化引用精确性，见第八节）。
-- 误答用例归因见 `eval/badcase.md`（当前 2–3 条，随 LLM 运行波动）。
+- `grounded_rate` 采用 snippet 精确匹配（答案引用 chunk 全文须与 gold 标注 snippet 逐字一致）。为消除「同一制度条款在多份文件重复收录、条款号不同」导致的假阴性，gold 已做**多版本标注**（273 个元素 / 162 题），命中任一版本即算命中。
+- 五项基础档指标全部达标（v5 提示词：恢复多引用 + 制度库外内容置空；检索跨文档同主题去重）。
+- 误答用例归因见 `eval/badcase.md`。
 
 ## 八、里程碑与后续
 
