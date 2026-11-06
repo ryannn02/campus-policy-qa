@@ -1,7 +1,7 @@
 """生成链实现：版本化提示词 + JSON 结构化输出 + 引用编号回填。
 
 职责（成员 B，RAG 核心）：
-- 从 ``prompts/answer/`` 最新版本提示词（当前 v3）读取模板，缺失时逐级回退；
+- 从 ``prompts/answer/`` 最新版本提示词（当前 v4）读取模板，缺失时逐级回退；
 - 使用 LangChain 组合 ``ChatPromptTemplate → ChatOpenAI → StrOutputParser``；
 - 要求模型输出合法 JSON：``{"answer": ..., "citations": [编号], "follow_up_questions": [...]}``；
 - 校验引用编号必须落在候选条款 ``[1..N]`` 范围内，杜绝编造引用；
@@ -31,17 +31,25 @@ from .contracts import Citation
 
 PROMPT_DIR = Path(__file__).resolve().parents[2] / "prompts" / "answer"
 # 提示词按版本演进：优先最新版本，vN 缺失或损坏时回退上一版本。
-# v1 永不删，作为基线；v2 提升回答的自然与亲和度；v3 增加建议追问与正文锚点。
-_PROMPT_FILES = [PROMPT_DIR / "v3.md", PROMPT_DIR / "v2.md", PROMPT_DIR / "v1.md"]
+# v1 永不删，作为基线；v2 提升回答的自然与亲和度；v3 增加建议追问与正文锚点；
+# v4 强化引用精准挑选与制度库外内容置空。
+_PROMPT_FILES = [
+    PROMPT_DIR / "v4.md",
+    PROMPT_DIR / "v3.md",
+    PROMPT_DIR / "v2.md",
+    PROMPT_DIR / "v1.md",
+]
 
 
 @dataclass
 class GeneratedAnswer:
     """生成链的结构化返回：答案 + 引用编号 + 置信度 + 建议追问。"""
 
-    answer: str
-    citation_numbers: List[int]
-    confidence: float
+    answer: str   #模型生成的中文答案正文
+    citation_numbers: List[int]#答案引用了哪些候选条款（存编号如 [1,3]，不存完整对象）
+    confidence: float#置信度（0–1 区间的浮点数，供上层决定是否采用/展示）
+
+
     # 大模型基于当前问题与回答生成的建议追问（2–4 条）；无则空列表。
     follow_up_questions: List[str] = field(default_factory=list)
 
@@ -65,7 +73,7 @@ _FALLBACK_HUMAN = (
 
 _prompt_cache: Optional[Tuple[str, str]] = None
 
-
+#从提示词 markdown 文件里，按 <!-- SYSTEM --> / <!-- HUMAN --> 标记切出对应段落。
 def _extract_section(text: str, tag: str) -> str:
     """从提示词文件提取 ``<!-- SYSTEM -->`` / ``<!-- HUMAN -->`` 段。"""
 
@@ -75,7 +83,7 @@ def _extract_section(text: str, tag: str) -> str:
         return ""
     return match.group(1).strip()
 
-
+#按版本优先级加载提示词，实现"v3 → v2 → v1 → 内置兜底"的逐级回退，并把结果缓存起来。
 def _load_prompt() -> Tuple[str, str]:
     """读取版本化提示词，失败时回退内置默认模板。"""
 
@@ -99,7 +107,7 @@ def _load_prompt() -> Tuple[str, str]:
     _prompt_cache = (system, human)
     return _prompt_cache
 
-
+#作用：把加载到的两段文本组装成 LangChain 的 ChatPromptTemplate 对象，供后续链式调用使用。
 def _build_prompt() -> ChatPromptTemplate:
     """基于版本化模板构建 LangChain 提示词。"""
 
@@ -133,7 +141,7 @@ def _extract_json_object(text: str) -> str:
         return text[start : end + 1]
     return text
 
-
+#把模型返回的 citations 字段规整为合法、去重、落在 [1..n] 范围内的整数列表。这是防幻觉的核心函数。
 def _normalize_citations(raw: object, n: int) -> List[int]:
     """把模型给出的 citations 规整为去重、落在 [1..n] 的编号列表。
 
@@ -160,7 +168,7 @@ def _normalize_citations(raw: object, n: int) -> List[int]:
             numbers.append(num)
     return numbers
 
-
+#解析 follow_up_questions 字段，做宽松降级处理
 def _parse_follow_ups(raw: object) -> List[str]:
     """解析 follow_up_questions 字段。
 
@@ -180,7 +188,7 @@ def _parse_follow_ups(raw: object) -> List[str]:
             follow_ups.append(cleaned)
     return follow_ups
 
-
+#解析环节的总调度，把原始输出拆成三元组 (answer, citation_numbers, follow_up_questions)
 def _parse_llm_output(raw: str, n: int) -> Tuple[str, List[int], List[str]]:
     """解析模型输出为 (answer, citation_numbers, follow_up_questions)。
 
