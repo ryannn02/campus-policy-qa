@@ -433,9 +433,91 @@ def _rank_and_build_citations(
     return citations
 
 
+# 查询改写词表：口语 / 口语化表述 → 制度表述。
+# 长词在前：同一 query 命中多个规则时按表序逐条替换。
+_QUERY_REWRITES: List[Tuple[str, str]] = [
+    ("缓考申请最晚什么时候交", "缓考申请截止时间"),
+    ("缓考最晚什么时候交", "缓考申请截止时间"),
+    ("最晚什么时候交", "申请截止时间"),
+    ("挂科", "课程考核不合格"),
+    ("翘课", "缺课"),
+    ("逃课", "缺课"),
+    ("旷课", "缺课"),
+    ("保研", "推荐免试研究生"),
+    ("查寝", "寝室检查"),
+    ("啥时候", "什么时候"),
+    ("怎么办", "如何处理"),
+    ("怎么处理", "如何处理"),
+    ("怎么申请", "如何申请"),
+]
+
+_llm_rewrite_cache: Dict[str, str] = {}
+
+
+def _rewrite_query(question: str) -> str:
+    """规则改写：把口语词归一为制度表述（按词表顺序替换）。"""
+
+    if not settings.retrieval_enable_rewrite:
+        return question
+    rewritten = question
+    for source, target in _QUERY_REWRITES:
+        if source in rewritten:
+            rewritten = rewritten.replace(source, target)
+    return rewritten
+
+
+def _llm_rewrite_query(question: str) -> str:
+    """用 LLM 把问句改写为更可检索的表述；失败回退原句。
+
+    结果按 question 缓存，避免同一问题重复调用。
+    """
+
+    if question in _llm_rewrite_cache:
+        return _llm_rewrite_cache[question]
+
+    try:
+        from langchain_openai import ChatOpenAI
+
+        llm = ChatOpenAI(
+            model=settings.chat_model,
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+            temperature=0,
+            timeout=15,
+            max_retries=0,
+        )
+        prompt = (
+            "把下面的口语化问题改写成更适合检索校园制度条款的简洁表述，"
+            "保留关键实体与限定条件，输出改写后的一句话，不要输出任何其他内容：\n"
+            f"{question}"
+        )
+        result = str(llm.invoke(prompt).content).strip()
+    except Exception:
+        result = question
+
+    _llm_rewrite_cache[question] = result
+    return result
+
+
+def _rewrite_question(question: str) -> str:
+    """查询改写入口：规则改写（总是）→ 可选 LLM 改写（仅命中口语词）。
+
+    不改动对外接口：`retrieve_candidates` 接收原始问题，
+    仅在检索内部使用改写后的 query 做编码与 BM25 打分。
+    """
+
+    rewritten = _rewrite_query(question)
+    if settings.retrieval_enable_llm_rewrite and any(
+        source in question for source, _ in _QUERY_REWRITES
+    ):
+        rewritten = _llm_rewrite_query(rewritten)
+    return rewritten
+
+
 def _retrieve_with_embeddings(question: str) -> List[Citation]:
     """基于真实索引的多路检索实现。
 
+    - 查询改写：规则改写（口语词归一）+ 可选 LLM 改写；
     - 向量路：bge 编码 + 暴力余弦；
     - BM25 路（开关 `settings.retrieval_enable_bm25`）：字符级 2-gram 打分；
     - 两路 RRF 融合排序 → 跨文档同主题去重 → per_doc → top_k；
@@ -445,7 +527,9 @@ def _retrieve_with_embeddings(question: str) -> List[Citation]:
     if _embeddings_matrix is None or not _indexed_chunks:
         return []
 
-    query_vector = _encode_question(question)
+    rewritten = _rewrite_question(question)
+
+    query_vector = _encode_question(rewritten)
     if query_vector is None:
         return []
 
@@ -454,13 +538,14 @@ def _retrieve_with_embeddings(question: str) -> List[Citation]:
         return []
 
     if settings.retrieval_enable_bm25:
-        bm25_scores = _bm25_scores_for_question(question)
+        bm25_scores = _bm25_scores_for_question(rewritten)
         if bm25_scores:
             fused = _rrf_fuse(
                 vector_scores,
                 bm25_scores,
                 vector_k=settings.retrieval_top_k,
                 bm25_k=settings.retrieval_bm25_top_k,
+                rrf_k=settings.retrieval_rrf_k,
             )
             ranked = [idx for idx, _ in fused]
         else:
@@ -471,7 +556,7 @@ def _retrieve_with_embeddings(question: str) -> List[Citation]:
     # 候选窗口：去重后需仍能凑满 top_k（含 per_doc），
     # 取 top_k + bm25_top_k + 缓冲；只对窗口内候选做两两比较。
     window = settings.retrieval_top_k + settings.retrieval_bm25_top_k + 5
-    ranked = _dedup_cross_doc(ranked[:window])
+    ranked = _dedup_cross_doc(ranked[:window], threshold=settings.retrieval_dedup_threshold)
     return _rank_and_build_citations(ranked, vector_scores)
 
 

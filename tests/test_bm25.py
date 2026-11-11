@@ -192,3 +192,49 @@ def test_dedup_preserves_order_and_handles_empty(monkeypatch) -> None:
     monkeypatch.setattr(retriever, "_indexed_chunks", chunks)
     assert retriever._dedup_cross_doc([]) == []
     assert retriever._dedup_cross_doc([1, 0]) == [1]
+
+
+def test_rewrite_query_replaces_colloquial_words() -> None:
+    """口语词应归一为制度表述；长规则优先于短规则。"""
+
+    assert retriever._rewrite_query("挂科了怎么办？") == "课程考核不合格了如何处理？"
+    assert retriever._rewrite_query("翘课会有什么后果？") == "缺课会有什么后果？"
+    assert retriever._rewrite_query("保研需要什么条件？") == "推荐免试研究生需要什么条件？"
+    assert retriever._rewrite_query("缓考最晚什么时候交材料？") == "缓考申请截止时间材料？"
+
+
+def test_rewrite_query_no_match_unchanged() -> None:
+    """未命中词表的书面问题应原样返回。"""
+
+    q = "图书馆能借几本书？"
+    assert retriever._rewrite_query(q) == q
+
+
+def test_rewrite_query_disabled_returns_original(monkeypatch) -> None:
+    """开关关闭时不做任何改写。"""
+
+    new_settings = dataclasses.replace(retriever.settings, retrieval_enable_rewrite=False)
+    monkeypatch.setattr(retriever, "settings", new_settings)
+    assert retriever._rewrite_query("挂科了怎么办？") == "挂科了怎么办？"
+
+
+def test_rewrite_question_skips_llm_when_no_colloquial_hit(monkeypatch) -> None:
+    """LLM 改写开关开启但 query 未命中口语词时，不应发起 LLM 调用。"""
+
+    new_settings = dataclasses.replace(retriever.settings, retrieval_enable_llm_rewrite=True)
+    monkeypatch.setattr(retriever, "settings", new_settings)
+    monkeypatch.setattr(retriever, "_llm_rewrite_query", lambda q: (_ for _ in ()).throw(
+        AssertionError("书面问题不应触发 LLM 改写")
+    ))
+
+    assert retriever._rewrite_question("图书馆能借几本书？") == "图书馆能借几本书？"
+
+
+def test_rewrite_question_llm_fallback_returns_input(monkeypatch) -> None:
+    """LLM 改写失败时应回退为规则改写后的 query，不让检索中断。"""
+
+    new_settings = dataclasses.replace(retriever.settings, retrieval_enable_llm_rewrite=True)
+    monkeypatch.setattr(retriever, "settings", new_settings)
+    monkeypatch.setattr(retriever, "_llm_rewrite_query", lambda q: q)
+
+    assert retriever._rewrite_question("挂科了怎么办？") == "课程考核不合格了如何处理？"

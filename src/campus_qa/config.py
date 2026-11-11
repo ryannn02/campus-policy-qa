@@ -104,13 +104,17 @@ class Settings:
     llm_base_url: Optional[str] = None
 
     # 检索相关参数
-    # per_doc=3 / bm25_top_k=10 为多路召回实验最优配置：
-    # Recall@5 0.733→0.802、grounded_rate 0.724→0.784（评测对比见 .evallogs/）。
+    # 多路召回实验最优配置（评测对比见 .evallogs/scan_*）：
+    # per_doc=4 / bm25_top_k=10 / rrf_k=60 → Recall@5 0.862、grounded 0.836。
     retrieval_top_k: int = 5
-    retrieval_per_doc: int = 3
+    retrieval_per_doc: int = 4
     retrieval_score_threshold: float = 0.35
     retrieval_enable_bm25: bool = True
     retrieval_bm25_top_k: int = 10
+    retrieval_rrf_k: float = 60.0
+    retrieval_dedup_threshold: float = 0.85
+    retrieval_enable_rewrite: bool = True
+    retrieval_enable_llm_rewrite: bool = False
     # 领域相关性判定阈值：非制度主题且 top-1 低于该值则拒答（no_evidence_in_corpus）。
     domain_score_threshold: float = 0.68
 
@@ -132,6 +136,10 @@ def load_settings() -> Settings:
     - RETRIEVAL_SCORE_THRESHOLD
     - RETRIEVAL_ENABLE_BM25（可选，多路召回开关，默认 true）
     - RETRIEVAL_BM25_TOP_K（可选，BM25 路候选数，默认 10）
+    - RETRIEVAL_RRF_K（可选，RRF 融合常数，默认 60）
+    - RETRIEVAL_DEDUP_THRESHOLD（可选，跨文档同主题去重重合率阈值，默认 0.85）
+    - RETRIEVAL_ENABLE_REWRITE（可选，查询规则改写开关，默认 true）
+    - RETRIEVAL_ENABLE_LLM_REWRITE（可选，口语 query 的 LLM 改写开关，默认 false）
     - RETRIEVAL_INDEX_DIR（可选，向量索引目录，默认 data/index）
     """
 
@@ -145,10 +153,14 @@ def load_settings() -> Settings:
         embedding_model=_resolve_embedding_model(),
         llm_base_url=base_url or None,
         retrieval_top_k=int(os.getenv("RETRIEVAL_TOP_K", "5")),
-        retrieval_per_doc=int(os.getenv("RETRIEVAL_PER_DOC", "3")),
+        retrieval_per_doc=int(os.getenv("RETRIEVAL_PER_DOC", "4")),
         retrieval_score_threshold=float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.35")),
         retrieval_enable_bm25=_env_bool("RETRIEVAL_ENABLE_BM25", default=True),
         retrieval_bm25_top_k=int(os.getenv("RETRIEVAL_BM25_TOP_K", "10")),
+        retrieval_rrf_k=float(os.getenv("RETRIEVAL_RRF_K", "60.0")),
+        retrieval_dedup_threshold=float(os.getenv("RETRIEVAL_DEDUP_THRESHOLD", "0.85")),
+        retrieval_enable_rewrite=_env_bool("RETRIEVAL_ENABLE_REWRITE", default=True),
+        retrieval_enable_llm_rewrite=_env_bool("RETRIEVAL_ENABLE_LLM_REWRITE", default=False),
         domain_score_threshold=float(os.getenv("DOMAIN_SCORE_THRESHOLD", "0.68")),
         index_dir=index_dir,
     )
