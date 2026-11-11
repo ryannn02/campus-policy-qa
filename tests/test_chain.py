@@ -23,7 +23,7 @@ def _citation(doc_id: str, score: float) -> Citation:
 
 
 def test_load_prompt_reads_latest_versioned() -> None:
-    """提示词应从 prompts/answer 最新版本（v5）读取，且含运行时变量与建议追问。"""
+    """提示词应从 prompts/answer 最新版本（v6）读取，且含运行时变量与建议追问。"""
 
     system, human = _load_prompt()
     assert system
@@ -31,8 +31,9 @@ def test_load_prompt_reads_latest_versioned() -> None:
     assert "{question}" in human
     assert "{context}" in human
     assert "follow_up_questions" in human
-    # v5 特征：恢复多引用（宁多勿漏）+ 保留制度库外内容置空。
+    # v6 特征：恢复多引用（宁多勿漏）+ 靠后编号相关也要挂上 + 保留制度库外内容置空。
     assert "宁多勿漏" in human
+    assert "排在后面的编号" in human
     assert "无法支撑" in human
 
 
