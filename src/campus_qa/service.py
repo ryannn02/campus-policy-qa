@@ -125,6 +125,32 @@ def _is_ambiguous(question: str) -> bool:
     return True
 
 
+# 泛化大类词 → 澄清追问（任务：歧义题由「直接拒答」改为「返回澄清追问」）。
+_AMBIGUOUS_CLARIFICATIONS = {
+    "奖学金": "您想了解国家奖学金、学业奖学金还是其他类型奖学金？",
+    "助学金": "您想了解国家助学金、国家励志奖学金还是其他资助项目？",
+    "补助": "您想了解临时困难补助、学费减免还是其他补助项目？",
+    "资助": "您想了解奖助学金、勤工助学还是学费减免等资助方式？",
+    "评优": "您想了解哪类评优（如三好学生、优秀毕业生）的评选条件？",
+    "评奖": "您想了解哪类奖项的评选条件？",
+    "荣誉": "您想了解哪类荣誉称号的评选条件？",
+    "处分": "您想了解处分的具体类型，还是处分的消除程序？",
+    "加分": "您想了解哪类加分项目（如学科竞赛、志愿服务）？",
+    "补贴": "您想了解哪类补贴项目？",
+    "学分": "您想了解学分的修读要求、认定方式，还是学分不足的补救办法？",
+}
+
+
+def _ambiguous_clarification(question: str) -> str:
+    """根据命中的泛化大类词，生成对应的澄清追问；无匹配时给通用追问。"""
+
+    cleaned = re.sub(r"[\s，。！？、；：,.!?;:]+", "", question)
+    for topic in _AMBIGUOUS_TOPICS:
+        if topic in cleaned and topic in _AMBIGUOUS_CLARIFICATIONS:
+            return _AMBIGUOUS_CLARIFICATIONS[topic]
+    return "您的问题信息不足，请补充具体制度名称或场景后重新提问。"
+
+
 # 校园制度主题关键词：用于「领域相关性」前置判定。
 # 问题不含任何关键词 → 视为非制度主题（生活/常识/校外信息类），
 # 配合检索 top-1 分数做拒答，避免误答「天气」「餐厅」等无依据问题。
@@ -262,11 +288,13 @@ def answer_question(question: str) -> AnswerResult:
         )
 
     if _is_ambiguous(question):
+        clarification = _ambiguous_clarification(question)
         return AnswerResult(
             question=question,
+            answer=clarification,
             refused=True,
             refuse_reason=RefuseReason.AMBIGUOUS_QUESTION,
-            suggested_contact="问题信息不足，请补充具体制度名称或场景后重新提问。",
+            suggested_contact=clarification,
         )
 
     candidates = retrieve_candidates(question)

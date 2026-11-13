@@ -371,3 +371,38 @@ def test_domain_relevant_avoids_cross_word_match() -> None:
 
     assert service._is_domain_relevant("学校有没有规定老师必须在 24 小时内回复学生邮件？") is False
     assert service._is_domain_relevant("退役士兵复学有什么规定？") is True
+
+
+def test_ambiguous_returns_clarification_question(monkeypatch) -> None:
+    """歧义题从「直接拒答」改为「返回澄清追问」，refused 仍为 true。"""
+
+    def _fail(_question: str) -> List[Citation]:  # pragma: no cover - 不应被调用
+        raise AssertionError("歧义问题不应进入检索")
+
+    monkeypatch.setattr(service, "retrieve_candidates", _fail)
+
+    result = service.answer_question("奖学金怎么拿到？")
+
+    assert result.refused is True
+    assert result.refuse_reason is RefuseReason.AMBIGUOUS_QUESTION
+    assert result.answer
+    assert "国家奖学金" in result.answer
+    assert result.suggested_contact == result.answer
+
+
+def test_ambiguous_clarification_varies_by_topic(monkeypatch) -> None:
+    """不同泛化大类词应给出不同的澄清追问。"""
+
+    def _fail(_question: str) -> List[Citation]:  # pragma: no cover - 不应被调用
+        raise AssertionError("歧义问题不应进入检索")
+
+    monkeypatch.setattr(service, "retrieve_candidates", _fail)
+
+    r1 = service.answer_question("奖学金怎么拿到？")
+    r2 = service.answer_question("处分怎么消除？")
+    r3 = service.answer_question("学分不够怎么办？")
+
+    assert r1.answer != r2.answer
+    assert r2.answer != r3.answer
+    assert "处分" in r2.answer
+    assert "学分" in r3.answer

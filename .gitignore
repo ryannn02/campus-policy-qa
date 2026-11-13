@@ -20,3 +20,5 @@ output/
 # 本地依赖缓存与临时目录
 .uv-cache/
 .tmp/
+.matplotlib_cache/
+.pipcache/

@@ -26,8 +26,16 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Iterable, List, Tuple
+
+# matplotlib 缓存目录：沙箱下 ~/.matplotlib 不可写，改到 workspace 内避免每次重建字体缓存。
+os.environ.setdefault("MPLCONFIGDIR", str(Path(__file__).resolve().parents[1] / ".matplotlib_cache"))
+
+import matplotlib
+matplotlib.use("Agg")  # 无 GUI 后端，便于脚本化生成图表
+import matplotlib.pyplot as plt
 
 from campus_qa.contracts import AnswerResult
 from campus_qa.retriever import retrieve_candidates
@@ -36,8 +44,13 @@ from campus_qa.service import answer_question
 
 EVAL_PATH = Path(__file__).resolve().parents[1] / "eval" / "questions.jsonl"
 REPORT_PATH = Path(__file__).resolve().parents[1] / "eval" / "report.md"
+CHART_DIR = REPORT_PATH.parent
 
 _CATEGORIES = ("answerable", "unanswerable", "multi-hop", "ambiguous")
+
+# 图表中文字体（macOS / Linux 常见中文字体，按顺序回退）
+plt.rcParams["font.sans-serif"] = ["Arial Unicode MS", "PingFang SC", "Heiti SC", "SimHei", "sans-serif"]
+plt.rcParams["axes.unicode_minus"] = False
 
 
 def _load_eval_questions(path: Path) -> List[dict]:
@@ -204,6 +217,72 @@ def _render_case_details(cases: List[Tuple[dict, AnswerResult]]) -> List[str]:
     return lines + [""]
 
 
+def _render_charts(metrics: dict) -> List[str]:
+    """生成指标对比柱状图与四类分布饼图，保存到 eval/ 下并返回 Markdown 引用行。"""
+
+    lines: List[str] = []
+
+    # 图 1：五项指标 vs 目标柱状图
+    labels = ["Recall@5", "有据可依率", "拒答率", "拒答失败率", "作答率"]
+    actuals = [
+        metrics["recall_at_5"],
+        metrics["grounded_rate"],
+        metrics["refusal_rate"],
+        metrics["refuse_failure_rate"],
+        metrics["answer_rate"],
+    ]
+    # 拒答失败率目标为「≤0.15」，其余为「≥目标」；统一画目标线作参考。
+    targets = [0.75, 0.80, 0.50, 0.15, None]
+
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    x = range(len(labels))
+    ax.bar(x, actuals, width=0.55, label="实际值", color="#4f81bd")
+    for i, t in enumerate(targets):
+        if t is not None:
+            ax.plot([i - 0.32, i + 0.32], [t, t], color="#c0504d", linewidth=2, linestyle="--")
+    for i, v in enumerate(actuals):
+        ax.text(i, v + 0.02, f"{v:.3f}", ha="center", fontsize=9)
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(labels, fontsize=10)
+    ax.set_ylim(0, 1.15)
+    ax.set_ylabel("指标值")
+    ax.set_title("五项指标 vs 目标（虚线为目标值）")
+    ax.legend(loc="upper right")
+    ax.grid(axis="y", linestyle=":", alpha=0.5)
+    fig.tight_layout()
+    metrics_png = CHART_DIR / "metrics_chart.png"
+    fig.savefig(metrics_png, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+
+    # 图 2：四类题量分布饼图
+    cat_labels = list(_CATEGORIES)
+    cat_sizes = [metrics["per_category"][c]["total"] for c in _CATEGORIES]
+    fig2, ax2 = plt.subplots(figsize=(5.5, 5.5))
+    ax2.pie(
+        cat_sizes,
+        labels=cat_labels,
+        autopct="%.0f%%",
+        startangle=90,
+        colors=["#4f81bd", "#c0504d", "#9bbb59", "#f2a900"],
+        wedgeprops={"edgecolor": "white"},
+    )
+    ax2.set_title("四类题量分布")
+    pie_png = CHART_DIR / "category_pie.png"
+    fig2.savefig(pie_png, dpi=120, bbox_inches="tight")
+    plt.close(fig2)
+
+    lines += [
+        "",
+        "## 图表",
+        "",
+        f"![五项指标 vs 目标]({metrics_png.name})",
+        "",
+        f"![四类题量分布]({pie_png.name})",
+        "",
+    ]
+    return lines
+
+
 def _render_markdown(
     metrics: dict,
     mismatches: List[Tuple[dict, AnswerResult]],
@@ -283,6 +362,7 @@ def _render_markdown(
         lines.append("")
 
     lines += _render_case_details(cases)
+    lines += _render_charts(metrics)
 
     return "\n".join(lines)
 

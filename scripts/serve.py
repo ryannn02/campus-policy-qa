@@ -129,6 +129,7 @@ PAGE_HTML = r"""<!DOCTYPE html>
 
       <div id="status" class="status"></div>
       <div id="answer" class="answer"></div>
+      <div id="clarify" class="followup"></div>
       <div id="citations" class="citations"></div>
       <div id="followup" class="followup"></div>
       <div id="meta" class="meta"></div>
@@ -143,6 +144,7 @@ PAGE_HTML = r"""<!DOCTYPE html>
       const answerEl = document.getElementById('answer');
       const citationsEl = document.getElementById('citations');
       const followupEl = document.getElementById('followup');
+      const clarifyEl = document.getElementById('clarify');
       const metaEl = document.getElementById('meta');
 
       const SUGGESTIONS = [
@@ -225,6 +227,19 @@ PAGE_HTML = r"""<!DOCTYPE html>
         ask();
       }
 
+      function renderClarification(text) {
+        clarifyEl.innerHTML = '';
+        if (!text) return;
+        const label = document.createElement('div');
+        label.className = 'section-label';
+        label.textContent = '追问澄清';
+        clarifyEl.appendChild(label);
+        const chips = document.createElement('div');
+        chips.className = 'chips';
+        clarifyEl.appendChild(chips);
+        renderChips(chips, [text]);
+      }
+
       function renderFollowups(q, backendQuestions) {
         followupEl.innerHTML = '';
         const label = document.createElement('div');
@@ -289,6 +304,7 @@ PAGE_HTML = r"""<!DOCTYPE html>
         askButton.disabled = true;
         statusEl.textContent = '正在查询制度条款，请稍候……';
         answerEl.textContent = '';
+        clarifyEl.innerHTML = '';
         citationsEl.innerHTML = '';
         followupEl.innerHTML = '';
         metaEl.textContent = '';
@@ -367,6 +383,13 @@ PAGE_HTML = r"""<!DOCTYPE html>
             citationsEl.textContent = '';
           }
 
+          const isAmbiguous = data.refused && data.refuse_reason === 'ambiguous_question';
+          if (isAmbiguous && data.suggested_contact) {
+            renderClarification(data.suggested_contact);
+          } else {
+            clarifyEl.innerHTML = '';
+          }
+
           const metaParts = [];
           if (typeof data.confidence === 'number') {
             metaParts.push('系统置信度：' + data.confidence.toFixed(2));
@@ -374,7 +397,7 @@ PAGE_HTML = r"""<!DOCTYPE html>
           if (typeof data.top_retrieval_score === 'number') {
             metaParts.push('检索匹配度：' + data.top_retrieval_score.toFixed(2));
           }
-          if (data.suggested_contact) {
+          if (data.suggested_contact && !isAmbiguous) {
             metaParts.push('建议：' + data.suggested_contact);
           }
           metaEl.textContent = metaParts.join('  |  ');
