@@ -161,9 +161,15 @@ def _load_index() -> None:
     _query_prefix = str(manifest.get("query_prefix", ""))
     _embedding_model_name = str(manifest.get("model", "")).strip()
 
-    chunks_file_relative = manifest.get("chunks_file")
-    if isinstance(chunks_file_relative, str) and chunks_file_relative:
-        chunks_path = settings.data_dir.parent / chunks_file_relative
+    chunks_file_ref = manifest.get("chunks_file")
+    if isinstance(chunks_file_ref, str) and chunks_file_ref:
+        ref_path = Path(chunks_file_ref)
+        if ref_path.is_absolute():
+            # 索引若从别的机器拷贝过来，manifest 里的绝对路径会失效（如 macOS
+            # 路径在 Windows 上不存在），此时回退仓库内 chunks.jsonl。
+            chunks_path = ref_path if ref_path.exists() else settings.chunks_path
+        else:
+            chunks_path = settings.data_dir.parent / ref_path
     else:
         chunks_path = settings.chunks_path
 
