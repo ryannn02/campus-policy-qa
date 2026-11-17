@@ -2,7 +2,7 @@
 
 上海第二工业大学校园制度问答助手：基于 LangChain + RAG，为师生提供有出处的制度条款回答。
 
-**当前状态**：M3 已闭环（五项基础档指标全达标）。CLI / Web API / 评测脚本均可运行：bge 向量 + BM25 多路召回（RRF 融合 + 跨文档同主题去重）→ 阈值闸门 → LLM 生成（v5 提示词）→ 引用回填 → `AnswerResult`。评测集 162 条（四类齐全，gold 多版本标注 100%）：`answer_rate` 1.000、`refusal_rate` 1.000、`refuse_failure_rate` 0.000、`Recall@5` 0.819、`grounded_rate` 0.810，全部达标（见 `eval/report.md`）。
+**当前状态**：M3 已闭环（五项基础档指标全达标）。CLI / Web API / 评测脚本均可运行：查询改写 → bge 向量 + BM25 多路召回（RRF 融合 + 跨文档同主题去重）→ 阈值闸门 → LLM 生成（v6 提示词）→ 引用回填 → `AnswerResult`。评测集 162 条（四类齐全，gold 多版本标注 100%）：`answer_rate` 1.000、`refusal_rate` 1.000、`refuse_failure_rate` 0.000、`Recall@5` 0.862、`grounded_rate` 0.828，全部达标（见 `eval/report.md`）。
 
 首个里程碑：从 CLI 输入一个中文问题，到输出一条结构化的 `AnswerResult`，端到端跑通；首轮只追求"能跑 + 能演示"，检索/生成指标与进阶优化放到第二阶段。
 
@@ -11,7 +11,7 @@
 ```
 data/raw/        原始文件（pdf/docx/html/.doc），不入 Git
 data/parsed/     解析后的纯文本，不入 Git
-data/chunks.jsonl  切分后的条款（4190 块），入库
+data/chunks.jsonl  切分后的条款（4277 块 / 266 份文档），入库
 data/index/      向量索引，不入 Git，可重建
 meta/            采集登记表 documents.csv（doc_id ↔ 来源 ↔ 状态），入库
 eval/            测试问题集与回归用例
@@ -28,7 +28,7 @@ docs/            架构与项目文档
 | --- | --- |
 | `config.py` | 读 `.env`，集中路径与模型配置 |
 | `contracts.py` | `AnswerResult` / `Citation` / 拒答 code，接口契约 |
-| `retriever.py` | bge 向量化 + 本地索引召回，`per_doc` 限额 |
+| `retriever.py` | 查询改写 + bge 向量 & BM25 多路召回（RRF 融合）+ 跨文档同主题去重 |
 | `chain.py` | LangChain 生成链：`ChatPromptTemplate → ChatOpenAI → StrOutputParser` |
 | `service.py` | 编排：语言/分数闸门 → 生成 → 引用回填 → 拒答 |
 | `scripts/` | `ingest` / `build_index` / `ask` / `serve` / `eval_answer` |
@@ -48,6 +48,43 @@ python -m scripts.serve                # http://127.0.0.1:8000（/health 存活�
 python -m scripts.eval_answer          # 跑 eval/questions.jsonl 并输出指标
 python -m pytest -q                    # 单元测试
 ```
+
+### Windows 快速开始
+
+macOS / Linux 按上方步骤即可；Windows（PowerShell / CMD）注意以下差异：
+
+```powershell
+# 1. 装 Python 3.11 与 uv（或 pip），克隆仓库
+git clone https://github.com/ryannn02/campus-policy-qa.git
+cd campus-policy-qa
+
+# 2. 安装依赖（uv 跨平台）
+uv sync --extra dev
+
+# 3. 配置密钥：Windows 无 cp，用 copy（CMD）或 Copy-Item（PowerShell）
+copy .env.example .env            # CMD
+Copy-Item .env.example .env       # PowerShell
+# 编辑 .env 填入 DEEPSEEK_API_KEY
+
+# 4. 重建向量索引（索引文件不入库；首次运行会下载 bge-small-zh-v1.5 模型，
+#    国内网络可在 .env 里设 HF_ENDPOINT=https://hf-mirror.com）
+python -m scripts.build_index
+
+# 5. 使用
+python -m scripts.ask "图书馆能借几本书？"
+python -m scripts.serve            # 浏览器打开 http://127.0.0.1:8000
+python -m scripts.eval_answer
+python -m pytest -q
+```
+
+Windows 差异说明：
+
+- GPU：`build_index` 自动检测，Windows 无 MPS 会用 CPU（4277 条语料 CPU 编码约几分钟，可接受）；
+- 重新解析原始文档（`python -m scripts.ingest`）需要 `data/raw` 原始文件（不入库，需自行同步）；
+  其中 `.doc` 文件依赖 LibreOffice（装好后自动识别 `soffice`），PDF/DOCX/HTML 无需额外软件；
+  只做问答 / 评测 / Web 演示不需要这一步；
+- 索引目录若从 macOS 机器拷贝而来，`manifest.json` 里的绝对路径会自动回退到仓库内
+  `data/chunks.jsonl`（`retriever.py` 已做跨机器兼容），但推荐直接重跑 `build_index`。
 
 > 数据流水线（成员 A 负责）：`data/raw` 原始文件 → `python -m scripts.ingest` →
 > `data/parsed/*.txt` + `data/chunks.jsonl`。`ingest` 只消费 `meta/documents.csv`
