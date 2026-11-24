@@ -1,0 +1,37 @@
+{"id": "D001", "question": "食堂几点开门？", "intent": "life", "category": "餐饮", "expect_keywords": ["食堂", "早餐"]}
+{"id": "D002", "question": "第一食堂二楼有什么？", "intent": "life", "category": "餐饮", "expect_keywords": ["风味"]}
+{"id": "D003", "question": "食堂可以用现金吗？", "intent": "life", "category": "餐饮", "expect_keywords": ["校园卡", "校园码"]}
+{"id": "D004", "question": "食堂饭菜有问题找谁反馈？", "intent": "life", "category": "餐饮", "expect_keywords": ["食堂经理", "意见"]}
+{"id": "D005", "question": "校园卡怎么充值？", "intent": "life", "category": "校园卡", "expect_keywords": ["小程序", "充值"]}
+{"id": "D006", "question": "校园卡丢了怎么办？", "intent": "life", "category": "校园卡", "expect_keywords": ["挂失", "补办"]}
+{"id": "D007", "question": "校园码在哪里打开？", "intent": "life", "category": "校园卡", "expect_keywords": ["企业微信", "小程序"]}
+{"id": "D008", "question": "快递驿站在哪里？", "intent": "life", "category": "快递", "expect_keywords": ["生活区", "驿站"]}
+{"id": "D009", "question": "快递能放几天？", "intent": "life", "category": "快递", "expect_keywords": ["3 天", "退回"]}
+{"id": "D010", "question": "收件地址怎么写比较稳？", "intent": "life", "category": "快递", "expect_keywords": ["金海路", "驿站"]}
+{"id": "D011", "question": "图书馆几点关门？", "intent": "life", "category": "图书馆", "expect_keywords": ["21:00", "阅览室"]}
+{"id": "D012", "question": "图书馆可以占座吗？", "intent": "life", "category": "图书馆", "expect_keywords": ["30 分钟", "占座"]}
+{"id": "D013", "question": "校园网怎么连？", "intent": "life", "category": "网络", "expect_keywords": ["认证", "学号"]}
+{"id": "D014", "question": "宿舍网断了找谁？", "intent": "life", "category": "网络", "expect_keywords": ["信息技术中心", "报修"]}
+{"id": "D015", "question": "宿舍东西坏了怎么报修？", "intent": "life", "category": "宿舍", "expect_keywords": ["报修", "房间号"]}
+{"id": "D016", "question": "宿舍热水几点有？", "intent": "life", "category": "宿舍", "expect_keywords": ["热水", "时段"]}
+{"id": "D017", "question": "宿舍空调费怎么交？", "intent": "life", "category": "宿舍", "expect_keywords": ["电费", "充值"]}
+{"id": "D018", "question": "洗衣房怎么用？", "intent": "life", "category": "宿舍", "expect_keywords": ["扫码", "洗衣机"]}
+{"id": "D019", "question": "学校哪里可以打印？", "intent": "life", "category": "便民", "expect_keywords": ["教学楼", "图书馆"]}
+{"id": "D020", "question": "学校超市开到几点？", "intent": "life", "category": "商贸", "expect_keywords": ["22:30", "超市"]}
+{"id": "D021", "question": "校医院几点上班？", "intent": "life", "category": "医疗", "expect_keywords": ["8:00", "16:30"]}
+{"id": "D022", "question": "校外看病的钱怎么报销？", "intent": "life", "category": "医疗", "expect_keywords": ["发票", "报销"]}
+{"id": "D023", "question": "体育馆怎么预约？", "intent": "life", "category": "体育", "expect_keywords": ["预约", "体育馆"]}
+{"id": "D024", "question": "学校班车几点发车？", "intent": "life", "category": "交通", "expect_keywords": ["班车", "时刻表"]}
+{"id": "D025", "question": "电动车能在楼道充电吗？", "intent": "life", "category": "交通", "expect_keywords": ["充电桩", "禁止"]}
+{"id": "D026", "question": "外卖能送进宿舍吗？", "intent": "life", "category": "快递", "expect_keywords": ["外卖柜"]}
+{"id": "D027", "question": "东西丢了去哪里找？", "intent": "life", "category": "便民", "expect_keywords": ["保卫处", "失物"]}
+{"id": "D028", "question": "晚上出事了打哪个电话？", "intent": "life", "category": "应急", "expect_keywords": ["50214110", "保卫处"]}
+{"id": "D029", "question": "垃圾怎么分类？", "intent": "life", "category": "环境", "expect_keywords": ["四分类", "干垃圾"]}
+{"id": "D030", "question": "学校有地方理发吗？", "intent": "life", "category": "商贸", "expect_keywords": ["理发", "生活区"]}
+{"id": "D031", "question": "现在浦东天气怎么样？", "intent": "tool", "category": "天气", "expect_keywords": ["气温", "℃"]}
+{"id": "D032", "question": "今天星期几？", "intent": "tool", "category": "时间", "expect_keywords": ["星期"]}
+{"id": "D033", "question": "本学期第几周了？", "intent": "tool", "category": "校历", "expect_keywords": ["第", "周"]}
+{"id": "D034", "question": "保卫处电话是多少？", "intent": "tool", "category": "电话", "expect_keywords": ["50214974"]}
+{"id": "D035", "question": "你好，你能做什么？", "intent": "chitchat", "category": "闲聊", "expect_keywords": ["制度", "生活"]}
+{"id": "D036", "question": "本科生最多能借几本书？", "intent": "policy", "category": "图书馆制度", "expect_keywords": ["借阅", "本"]}
+{"id": "D037", "question": "缓考怎么申请？", "intent": "policy", "category": "考试制度", "expect_keywords": ["缓考", "申请"]}

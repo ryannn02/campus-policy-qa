@@ -35,6 +35,12 @@ from .contracts import Citation
 
 
 _PAGE_NUMBER_RE = re.compile(r"\d+")
+# 金额方向约束：识别「50万元以上 / 50万元（含）以下」这类问句限定。
+_NUMERIC_QUALIFIER_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*万元\s*(?:（含）|\(含\))?\s*(以上|以下|及以上|及以下)"
+)
+# 问「哪个部门 / 归口 / 谁负责」时，追加职责类检索词，避免只命中适用范围条款。
+_DUTY_QUERY_MARKERS = ("归口", "哪个部门", "哪个单位", "谁负责", "由谁", "牵头")
 
 # BM25 与 RRF 融合参数（字符级 2-gram，中文无需分词器）。
 _BM25_K1 = 1.5
@@ -400,8 +406,59 @@ def _dedup_cross_doc(
     return kept
 
 
-def _rank_and_build_citations(
-    ranked_indices: List[int],
+def _numeric_conditions(text: str) -> Dict[float, set[str]]:
+    """提取文本中的金额方向约束，如「50万元以上」→ {50.0: {'up'}}。
+
+    同一金额出现多种方向时全部保留，用于判断候选是否与问句方向冲突。
+    """
+
+    conditions: Dict[float, set[str]] = {}
+    for match in _NUMERIC_QUALIFIER_RE.finditer(text or ""):
+        amount = float(match.group(1))
+        qualifier = match.group(2)
+        direction = "up" if "以上" in qualifier else "down"
+        conditions.setdefault(amount, set()).add(direction)
+    return conditions
+
+
+def _has_numeric_conflict(text: str, question_conditions: Dict[float, set[str]]) -> bool:
+    """候选条款是否出现与问句相反的同金额方向限定。
+
+    只处理同金额的「以上 / 以下」冲突；候选没有金额或没有方向时不判冲突，
+    避免误伤普通条款。问句同时包含上下限时，候选命中任一方向即不冲突。
+    """
+
+    candidate_conditions = _numeric_conditions(text)
+    for amount, question_directions in question_conditions.items():
+        candidate_directions = candidate_conditions.get(amount)
+        if candidate_directions and not (question_directions & candidate_directions):
+            return True
+    return False
+
+
+def _demote_numeric_conflicts(ranked_indices: List[int], question: str) -> List[int]:
+    """把与问句金额方向相反的候选移到末尾，保留其余候选原有顺序。
+
+    典型场景：问「维修项目 50 万元以上归口部门」，候选里出现
+    「50 万元以下由后勤服务中心归口」时，不能让它占据第一条引用。
+    """
+
+    question_conditions = _numeric_conditions(question)
+    if not question_conditions:
+        return ranked_indices
+
+    consistent: List[int] = []
+    conflicting: List[int] = []
+    for index in ranked_indices:
+        chunk = _indexed_chunks[int(index)]
+        if _has_numeric_conflict(chunk.text, question_conditions):
+            conflicting.append(int(index))
+        else:
+            consistent.append(int(index))
+    return consistent + conflicting
+
+
+def _rank_and_build_citations(    ranked_indices: List[int],
     scores: np.ndarray,
 ) -> List[Citation]:
     """按给定索引顺序组装 Citation，套用 top_k 与 per_doc 限额。
@@ -518,6 +575,8 @@ def _rewrite_question(question: str) -> str:
         source in question for source, _ in _QUERY_REWRITES
     ):
         rewritten = _llm_rewrite_query(rewritten)
+    if any(marker in rewritten for marker in _DUTY_QUERY_MARKERS) and "职责分工" not in rewritten:
+        rewritten = f"{rewritten} 职责分工 负责部门"
     return rewritten
 
 
@@ -564,6 +623,7 @@ def _retrieve_with_embeddings(question: str) -> List[Citation]:
     # 取 top_k + bm25_top_k + 缓冲；只对窗口内候选做两两比较。
     window = settings.retrieval_top_k + settings.retrieval_bm25_top_k + 5
     ranked = _dedup_cross_doc(ranked[:window], threshold=settings.retrieval_dedup_threshold)
+    ranked = _demote_numeric_conflicts(ranked, question)
     return _rank_and_build_citations(ranked, vector_scores)
 
 

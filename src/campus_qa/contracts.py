@@ -3,9 +3,46 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+
+class Intent(str, Enum):
+    """问题意图分类（M5 路由器输出）。
+
+    制度问答仍然走原有 service 链路；其余三类由 orchestrator 分派，
+    互不影响，保证制度库的拒答与召回指标不被稀释。
+    """
+
+    POLICY = "policy"
+    LIFE = "life"
+    TOOL = "tool"
+    CHITCHAT = "chitchat"
+
+
+class Source(BaseModel):
+    """跨库统一的来源条目（前端引用卡片使用）。
+
+    与 `Citation` 并存：`Citation` 是制度条款契约（字段不能动），
+    `Source` 是新链路（生活库 / 工具 / 渠道）的通用来源描述。
+    """
+
+    kind: str  # policy / life / tool
+    title: str
+    snippet: str = ""
+    score: float = 0.0
+    document_id: Optional[str] = None
+    url: Optional[str] = None
+
+
+class ToolResult(BaseModel):
+    """工具调用结果（天气、时间、校历、常用电话）。"""
+
+    name: str
+    ok: bool
+    data: Dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
 
 
 class RefuseReason(str, Enum):
@@ -58,4 +95,12 @@ class AnswerResult(BaseModel):
     refuse_reason: Optional[RefuseReason] = None
     top_retrieval_score: Optional[float] = None
     suggested_contact: Optional[str] = None
+
+    # ---- M5 新增（全部带默认值，旧调用方与旧契约零影响）----
+    # 路由命中的意图；None 表示未经路由器（例如直接调用 service）。
+    intent: Optional[Intent] = None
+    # 生活库 / 工具链路的来源卡片；制度问答仍以 citations 为准。
+    sources: List[Source] = Field(default_factory=list)
+    # 工具调用的结构化结果：前端可直接渲染，不必解析自然语言。
+    tool_result: Optional[ToolResult] = None
 

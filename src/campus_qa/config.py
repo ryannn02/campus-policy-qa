@@ -62,9 +62,11 @@ def _resolve_llm() -> tuple[str, str, str]:
 
     deepseek_key = _env("DEEPSEEK_API_KEY")
     if deepseek_key:
+        # 只配了 DeepSeek 密钥、没填地址时，默认走 DeepSeek 官方接口，
+        # 否则会落到 OpenAI 默认地址并因网络不可达而超时。
         return (
             deepseek_key,
-            _env("LLM_BASE_URL", "DEEPSEEK_BASE_URL"),
+            _env("LLM_BASE_URL", "DEEPSEEK_BASE_URL", default="https://api.deepseek.com"),
             _env("CHAT_MODEL", "DEEPSEEK_MODEL", default="deepseek-chat"),
         )
 
@@ -123,6 +125,34 @@ class Settings:
     chunks_path: Path = DATA_DIR / "chunks.jsonl"
     index_dir: Path = DATA_DIR / "index"
 
+    # ---- M5：生活库 / 会话 / 工具 / 渠道 ----
+    # 生活库与制度库物理分离：检索器、索引、语料都不共用，
+    # 避免生活内容污染制度问答的 Recall@5 与拒答判定。
+    life_dir: Path = DATA_DIR / "life"
+    life_chunks_path: Path = DATA_DIR / "life" / "chunks.jsonl"
+    life_index_path: Path = DATA_DIR / "life" / "index.json"
+    life_top_k: int = 3
+    life_score_threshold: float = 0.35
+
+    # 多轮会话（SQLite 单文件，不入库）
+    session_db_path: Path = DATA_DIR / "sessions.sqlite3"
+    max_context_turns: int = 3
+
+    # 天气工具：默认上海浦东（金海路校区），可用 .env 覆盖
+    weather_city: str = "上海浦东"
+    weather_latitude: float = 31.2215
+    weather_longitude: float = 121.5440
+    tool_timeout_seconds: float = 8.0
+    # 校历：按学期配置的数据文件（各学期第 1 周周一 + 教学周数），用于「现在第几周」
+    academic_calendar_path: Path = DATA_DIR / "academic_calendar.json"
+    # 兼容旧配置：校历文件缺失或没有覆盖今天时，退回到这个单一起点
+    semester_start: str = "2026-09-21"
+
+    # 渠道开关：默认关闭，避免本地开发时误连外部服务
+    wall_enabled: bool = False
+    wall_source: str = ""
+    qq_channel_enabled: bool = False
+
 
 def load_settings() -> Settings:
     """从环境变量构建 `Settings`，提供默认值以便本地快速跑通。
@@ -146,6 +176,13 @@ def load_settings() -> Settings:
     api_key, base_url, chat_model = _resolve_llm()
 
     index_dir = Path(os.getenv("RETRIEVAL_INDEX_DIR", str(DATA_DIR / "index")))
+    life_dir = Path(os.getenv("LIFE_DIR", str(DATA_DIR / "life")))
+    life_index_path = Path(
+        os.getenv("LIFE_INDEX_PATH", str(life_dir / "index.json"))
+    )
+    session_db_path = Path(
+        os.getenv("SESSION_DB_PATH", str(DATA_DIR / "sessions.sqlite3"))
+    )
 
     return Settings(
         llm_api_key=api_key,
@@ -163,6 +200,23 @@ def load_settings() -> Settings:
         retrieval_enable_llm_rewrite=_env_bool("RETRIEVAL_ENABLE_LLM_REWRITE", default=False),
         domain_score_threshold=float(os.getenv("DOMAIN_SCORE_THRESHOLD", "0.68")),
         index_dir=index_dir,
+        life_dir=life_dir,
+        life_chunks_path=Path(
+            os.getenv("LIFE_CHUNKS_PATH", str(life_dir / "chunks.jsonl"))
+        ),
+        life_index_path=life_index_path,
+        life_top_k=int(os.getenv("LIFE_TOP_K", "3")),
+        life_score_threshold=float(os.getenv("LIFE_SCORE_THRESHOLD", "0.35")),
+        session_db_path=session_db_path,
+        max_context_turns=int(os.getenv("MAX_CONTEXT_TURNS", "3")),
+        weather_city=_env("WEATHER_CITY", default="上海浦东"),
+        weather_latitude=float(os.getenv("WEATHER_LATITUDE", "31.2215")),
+        weather_longitude=float(os.getenv("WEATHER_LONGITUDE", "121.5440")),
+        tool_timeout_seconds=float(os.getenv("TOOL_TIMEOUT_SECONDS", "8.0")),
+        semester_start=_env("SEMESTER_START", default="2026-09-21"),
+        wall_enabled=_env_bool("WALL_ENABLED", default=False),
+        wall_source=_env("WALL_SOURCE", default=""),
+        qq_channel_enabled=_env_bool("QQ_CHANNEL_ENABLED", default=False),
     )
 
 

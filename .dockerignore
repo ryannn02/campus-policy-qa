@@ -1,0 +1,12 @@
+.git
+.venv
+__pycache__/
+*.pyc
+.pytest_cache
+.evallogs
+data/raw
+data/parsed
+data/index
+data/sessions.sqlite3
+reports
+eval/*.png

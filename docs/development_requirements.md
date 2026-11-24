@@ -117,7 +117,7 @@
 
 - 里程碑 M2：数据与索引流水线 ✅（已验收）
   - 完成制度文档解析（`scripts/ingest.py`：PDF/Word/HTML + RapidOCR 扫描件回退）；
-  - 构建 `data/chunks.jsonl`（4277 块 / 265 份文档）与 `data/index/`；
+  - 构建 `data/chunks.jsonl`（3851 块 / 269 份文档）与 `data/index/`；
   - 拒答收紧 + 评测集扩至 162 条 + 动态追问 + 可点击引用锚点（见 `docs/m2_plan.md`）。
 
 - 里程碑 M3：Web/API 与评测体系 ✅（已验收，4/5 指标达标）

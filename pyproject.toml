@@ -12,6 +12,10 @@ dependencies = [
     "pydantic>=2.7",
     "python-dotenv>=1.0",
     "langchain>=1.5.0",
+    # Web 服务层（M5：路由 / 多轮 / 生活库 / 工具 / 渠道）
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]

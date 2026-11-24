@@ -1,0 +1,8 @@
+{"id": "M001", "turns": [{"question": "食堂几点开门？", "intent": "life"}, {"question": "那二楼呢？", "intent": "life"}], "note": "追问继承：生活库上下文拼接"}
+{"id": "M002", "turns": [{"question": "快递驿站在哪里？", "intent": "life"}, {"question": "几点关门？", "intent": "life"}], "note": "极短追问，靠上一轮承接"}
+{"id": "M003", "turns": [{"question": "校园卡丢了怎么办？", "intent": "life"}, {"question": "补办要带什么？", "intent": "life"}], "note": "同一主题的连续追问"}
+{"id": "M004", "turns": [{"question": "本科生最多能借几本书？", "intent": "policy"}, {"question": "逾期了怎么处理？", "intent": "policy"}], "note": "制度链路的多轮，仍走原 service"}
+{"id": "M005", "turns": [{"question": "现在浦东天气怎么样？", "intent": "tool"}, {"question": "明天呢？", "intent": "tool"}], "note": "工具追问：天气预告已含未来几天"}
+{"id": "M006", "turns": [{"question": "本学期第几周了？", "intent": "tool"}, {"question": "保卫处电话多少？", "intent": "tool"}], "note": "工具切换，不继承上一轮主题"}
+{"id": "M007", "turns": [{"question": "校医院几点上班？", "intent": "life"}, {"question": "校外看病能报销吗？", "intent": "life"}], "note": "医疗主题两连问"}
+{"id": "M008", "turns": [{"question": "你好", "intent": "chitchat"}, {"question": "食堂几点开门？", "intent": "life"}], "note": "闲聊后切换到生活，不应继承"}

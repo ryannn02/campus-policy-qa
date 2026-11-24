@@ -373,6 +373,13 @@ def test_domain_relevant_avoids_cross_word_match() -> None:
     assert service._is_domain_relevant("退役士兵复学有什么规定？") is True
 
 
+def test_domain_relevant_for_admin_policy_terms() -> None:
+    """行政后勤制度词也应被领域判定识别，避免检索到却被前置拒答。"""
+
+    assert service._is_domain_relevant("房屋、设施维修项目50万元以上由哪个部门归口管理？") is True
+    assert service._is_domain_relevant("采购合同金额达到5万元是否必须签订？") is True
+
+
 def test_ambiguous_returns_clarification_question(monkeypatch) -> None:
     """歧义题从「直接拒答」改为「返回澄清追问」，refused 仍为 true。"""
 

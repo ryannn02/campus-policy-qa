@@ -238,3 +238,26 @@ def test_rewrite_question_llm_fallback_returns_input(monkeypatch) -> None:
     monkeypatch.setattr(retriever, "_llm_rewrite_query", lambda q: q)
 
     assert retriever._rewrite_question("挂科了怎么办？") == "课程考核不合格了如何处理？"
+
+
+def test_numeric_conditions_extract_amount_direction() -> None:
+    """金额方向抽取：支持「50万元以上 / 50 万元（含）以下」。"""
+
+    assert retriever._numeric_conditions("总投资50万元以上的项目") == {50.0: {"up"}}
+    assert retriever._numeric_conditions("单项50 万元（含）以下的维修") == {50.0: {"down"}}
+
+
+def test_numeric_conflict_rejects_opposite_amount_direction() -> None:
+    """问 50 万元以上时，50 万元以下条款应判为方向冲突。"""
+
+    question = retriever._numeric_conditions("50万元以上的归口部门是谁？")
+    assert retriever._has_numeric_conflict("后勤服务中心是单项50 万元以下的归口部门", question)
+    assert not retriever._has_numeric_conflict("总投资在50 万元（含）以上的维修项目", question)
+
+
+def test_rewrite_question_adds_duty_terms_for_department_questions() -> None:
+    """问「归口/哪个部门」时追加职责类检索词，保留原问题语义。"""
+
+    rewritten = retriever._rewrite_question("房屋维修50万元以上的归口管理部门是谁？")
+    assert "职责分工 负责部门" in rewritten
+    assert "房屋维修50万元以上" in rewritten

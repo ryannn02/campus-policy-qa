@@ -11,6 +11,7 @@ data/parsed/
 data/index/
 data/removed/
 data/*.log
+data/sessions.sqlite3
 reports/
 .evallogs/
 

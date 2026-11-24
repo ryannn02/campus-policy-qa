@@ -1,0 +1,14 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SESSION_DB_PATH: /app/data/sessions.sqlite3
+    volumes:
+      # 制度库索引（embeddings.npy + manifest.json）与数据都在宿主机
+      - ./data:/app/data
+    restart: unless-stopped

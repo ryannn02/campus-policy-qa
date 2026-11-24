@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1d4ed8" />
+    <title>上工大校园问答</title>
+    <link rel="stylesheet" href="/assets/style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">SSPU</div>
+          <div class="brand-text">
+            <strong>上工大校园问答</strong>
+            <span>制度 · 生活 · 实时</span>
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          <span class="dot" id="health-dot"></span>
+          <span id="health-text">正在检查服务…</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="topbar-title">
+            <span class="topbar-brand">SSPU</span>
+            校园问答助手
+            <span class="topbar-sub" id="topbar-sub">制度条款带引用，生活问题带出处</span>
+          </div>
+          <div class="topbar-actions">
+            <button class="ghost" id="clear-chat" type="button">清空对话</button>
+            <button class="ghost" id="theme-toggle" type="button">深色</button>
+          </div>
+        </header>
+
+        <section class="chat" id="chat" aria-live="polite"></section>
+
+        <footer class="composer">
+          <div class="composer-box">
+            <textarea
+              id="input"
+              rows="1"
+              placeholder="问问制度、食堂、快递、校园卡、天气…（Enter 发送，Shift+Enter 换行）"
+            ></textarea>
+            <button class="send" id="send" type="button" aria-label="发送">发送</button>
+          </div>
+          <div class="composer-hint">回答仅供参考，制度以学校正式文件为准；本系统不查询任何人的个人信息。</div>
+        </footer>
+      </main>
+    </div>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

@@ -20,12 +20,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
 
-from campus_qa.config import settings
+# Windows + 中文路径下 editable 安装的 .pth 可能失效，这里显式兜底
+_ROOT = Path(__file__).resolve().parents[1]
+_SRC = _ROOT / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+from campus_qa.config import settings  # noqa: E402
 
 
 def _load_chunks(path: Path) -> List[Dict[str, Any]]:

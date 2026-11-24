@@ -139,6 +139,70 @@
   - 进阶档目标 ≤ 5s（`p95_within_advanced_target`）。
 - 时延口径为「问题进入 `answer_question` 到返回 `AnswerResult`」的端到端耗时，包含检索与生成，不包含请求体解析。
 
+## M5 扩展（向后兼容）
+
+> 原则：旧字段一个不动、旧行为一个不改；新增字段全部有默认值，旧客户端可以忽略。
+
+### 1. `AnswerResult` 的新增可选字段
+
+| 字段 | 类型 | 含义 |
+| --- | --- | --- |
+| `intent` | `"policy" / "life" / "tool" / "chitchat"` | 路由命中的意图；未经路由时为 `null` |
+| `sources` | `Source[]` | 跨库来源卡片：`{kind, title, snippet, score, document_id, url}` |
+| `tool_result` | `{"name", "ok", "data", "error"}` | 工具调用的结构化结果 |
+
+制度问答仍然以 `citations` 为准；`sources` 是它的镜像（`kind="policy"`），
+方便前端用同一套卡片渲染三种来源。
+
+### 2. 请求体的可选字段
+
+```json
+{"question": "食堂几点开门？", "session_id": "abc123"}
+```
+
+- `session_id` 可选：传入则复用多轮上下文并落库；不传则完全无状态。
+- 非法 JSON / 非对象 / `question` 非字符串仍然返回 `400`
+  （`invalid_json` / `invalid_question`），不是 FastAPI 默认的 422。
+
+### 3. 新增端点
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/answer/stream` | SSE：`event: meta` → 多个 `event: delta` → `event: done` |
+| `POST` | `/api/route` | 只跑路由，返回 `{intent, confidence, matched, reason, tool}` |
+| `GET` | `/api/sessions` | `{"sessions": [{id, title, intent, created_at, updated_at, message_count}]}` |
+| `POST` | `/api/sessions` | 请求 `{"title": "..."}`，返回 `{session_id, title}` |
+| `PATCH` | `/api/sessions/{id}` | 重命名；空标题 400，不存在 404 |
+| `DELETE` | `/api/sessions/{id}` | 删除会话与消息；不存在 404 |
+| `GET` | `/api/sessions/{id}/messages` | `{"session": {...}, "messages": [{role, content, intent, sources, created_at}]}` |
+| `GET` | `/api/capabilities` | 意图、工具、生活库规模 |
+| `GET` | `/health`（`/api/health` 同） | 增加 `life_index_present`、`life.load_error`、`tools` |
+
+`/api/stats` 在原有 P50/P95/P99 字段上追加 `life` 与 `conversation` 两段统计，字段只增不减。
+
+### 4. SSE 事件格式
+
+```
+event: meta
+data: {"intent": "life", "refused": false, "session_id": "abc123", "sources": [...]}
+
+event: delta
+data: {"text": "第一食堂早餐 6:30–9:00，"}
+
+event: done
+data: {...完整 AnswerResult...}
+```
+
+`delta` 是后端一次性生成后的分段投递（不是 token 级流式），用于改善感知时延；
+`done` 才是权威结果，前端以它为准。
+
+### 5. 隐私边界
+
+- 请求「查别人的手机号 / 学号 / 住址 / 社交账号」→ `refused=true`，
+  `refuse_reason="no_evidence_in_corpus"`，`suggested_contact` 说明不提供该能力；
+- 渠道侧不接收、不存储、不打印任何用户身份字段；
+- 会话删除即物理删除消息行，不做软删除。
+
 ## Web 页面草图（文本版）
 
 > 目标：最小可用的问答界面，围绕 `AnswerResult` 展示内容。
