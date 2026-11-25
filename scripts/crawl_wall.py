@@ -51,7 +51,9 @@ from campus_qa.safety import redact  # noqa: E402
 # 问句信号：有这些词/标点才可能是「学生在问什么」
 _QUESTION_SIGNALS = re.compile(
     r"[？?]|怎么|怎样|如何|哪里|在哪|几点|多少|什么|能不能|可不可以|是不是|有没有|"
-    r"吗|呢|求问|请问|想问|有人知道|谁知道|求助|求告知|想问一下"
+    r"吗|呢|求问|请问|想问|有人知道|谁知道|求助|求告知|想问一下|"
+    # 选择问与正反问没有「吗」，靠这些信号识别：A 还是 B / 用不用 / 应不应该
+    r"还是|哪|用不用|应不应该|要不要|能否|([\u4e00-\u9fff])不\1"
 )
 
 # 帖子里的噪音：墙号自称、投稿格式、@、话题、链接、表情
@@ -261,8 +263,8 @@ def normalize_question(text: str) -> str:
     body = body.strip("，,、 ")
     for pattern in _PREFIX_PATTERNS:
         body = pattern.sub("", body).strip()
-    # 只去「呢/啊/呀/么」这类语气词；「吗」是疑问标记，保留
-    body = re.sub(r"(呢|啊|呀|么)$", "", body).strip()
+    # 只去「呢/啊/呀/么」这类语气词；「吗」是疑问标记，「什么」的「么」要保留
+    body = re.sub(r"(?<!什)(呢|啊|呀|么)$", "", body).strip()
     body = body.rstrip("。！!?？；; ")
     if not body:
         return ""

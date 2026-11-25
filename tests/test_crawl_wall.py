@@ -30,6 +30,22 @@ def test_clean_post_removes_cq_and_mentions() -> None:
 def test_normalize_question_adds_question_mark() -> None:
     assert normalize_question("请问食堂几点开门呢") == "食堂几点开门？"
     assert normalize_question("   ") == ""
+    # 「什么」结尾不能被当成语气词截掉
+    assert normalize_question("热水供应时间是什么") == "热水供应时间是什么？"
+
+
+def test_build_question_set_keeps_choice_questions() -> None:
+    """「A 还是 B」「用不用」「哪几」这类问句没有「吗」，也要能提炼出来。"""
+    from scripts.crawl_wall import WallPost, extract_questions, ExtractStats
+
+    for text in (
+        "期末考试是一起考还是每个班各自考",
+        "讲座签到的话用不用刷卡",
+        "大物B学的是哪几章",
+    ):
+        items = extract_questions(WallPost(text=text), ExtractStats())
+        assert len(items) == 1, text
+        assert items[0].question.endswith("？")
 
 
 def test_guess_category() -> None:

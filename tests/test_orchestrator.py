@@ -146,6 +146,14 @@ def test_session_persistence(conv: ConversationStore) -> None:
 
 def test_followup_inherits_life_intent(conv: ConversationStore, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(orchestrator, "life_store", FakeLifeStore())
+    # 不调真实模型：替身记录「拿去精简的问题」，验证追问带上了上一轮
+    seen: dict[str, str] = {}
+
+    def fake_condense(question: str, hits) -> str:
+        seen["question"] = question
+        return "第一食堂早餐 6:30–9:00。"
+
+    monkeypatch.setattr(orchestrator.life_summary, "condense", fake_condense)
     session_id = conv.create_session("多轮")
     conv.add_message(session_id, "user", "食堂几点开门？", intent="life")
 
@@ -153,6 +161,8 @@ def test_followup_inherits_life_intent(conv: ConversationStore, monkeypatch: pyt
 
     assert result.intent == Intent.LIFE
     assert "6:30" in (result.answer or "")
+    assert "食堂" in seen["question"]
+    assert result.question == "那二楼呢？"
 
 
 def test_policy_question_not_augmented_by_history(

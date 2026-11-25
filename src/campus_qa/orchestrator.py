@@ -54,7 +54,9 @@ def _fallback_body(hits: List[LifeHit]) -> str:
     return " ".join(sentences[:2]) if sentences else first[:120]
 
 
-def _life_answer(question: str, hits: List[LifeHit]) -> AnswerResult:
+def _life_answer(question: str, hits: List[LifeHit], focus: Optional[str] = None) -> AnswerResult:
+    """`focus` 是用来做精简的问题：追问时带上上一轮，模型才知道「那二楼」在问什么。"""
+
     if not hits:
         return AnswerResult(
             question=question,
@@ -64,7 +66,7 @@ def _life_answer(question: str, hits: List[LifeHit]) -> AnswerResult:
             intent=Intent.LIFE,
         )
 
-    body = life_summary.condense(question, hits) or _fallback_body(hits)
+    body = life_summary.condense(focus or question, hits) or _fallback_body(hits)
     answer = f"{body}{life_summary.NOTE}"
 
     sources = [
@@ -196,7 +198,7 @@ def answer(question: str, session_id: Optional[str] = None) -> AnswerResult:
         query = text
         if decision.reason == "inherit" and last_question:
             query = _augment_for_followup(text, last_question)
-        result = _life_answer(text, life_store.search(query))
+        result = _life_answer(text, life_store.search(query), focus=query)
     elif decision.intent == Intent.TOOL:
         result = _tool_answer(text, decision.tool or "campus_time")
     elif decision.intent == Intent.CHITCHAT:
